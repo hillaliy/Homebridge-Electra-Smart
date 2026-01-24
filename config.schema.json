@@ -16,11 +16,6 @@
         "title": "Access Token",
         "type": "string"
       },
-      "phoneNumber": {
-        "title": "Registration Phone Number",
-        "type": "string",
-        "description": "Use this to fetch your IMEI and Token if you don't have them."
-      },
       "options": {
         "title": "Additional Options",
         "type": "object",
@@ -42,7 +37,7 @@
             "type": "integer",
             "default": 60,
             "minimum": 30,
-            "description": "How often to check for status changes (recommended 30-60s)."
+            "description": "How often to check for status changes (recommended 60-90s)."
           }
         }
       }

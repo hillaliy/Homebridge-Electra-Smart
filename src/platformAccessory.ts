@@ -38,7 +38,7 @@ export class ElectraPlatformAccessory {
       this.accessory.addService(this.platform.Service.HeaterCooler);
 
     // 2. DRY MODE Switch
-    if (!this.platform.config.hideDryMode) {
+    if (!this.platform.config.options.hideDryMode) {
       this.dryService =
         this.accessory.getService('Dry Mode') ||
         this.accessory.addService(
@@ -46,7 +46,10 @@ export class ElectraPlatformAccessory {
           'Dry Mode',
           'dry-mode-switch',
         );
-
+      this.dryService.setCharacteristic(
+        this.platform.Characteristic.Name,
+        'Dry Mode',
+      );
       this.dryService
         .getCharacteristic(this.platform.Characteristic.On)
         .onSet(async value =>
@@ -61,7 +64,7 @@ export class ElectraPlatformAccessory {
     }
 
     // 3. FAN MODE Switch
-    if (!this.platform.config.hideFanMode) {
+    if (!this.platform.config.options.hideFanMode) {
       this.fanModeService =
         this.accessory.getService('Fan Mode') ||
         this.accessory.addService(
@@ -69,7 +72,10 @@ export class ElectraPlatformAccessory {
           'Fan Mode',
           'fan-mode-switch',
         );
-
+      this.fanModeService.setCharacteristic(
+        this.platform.Characteristic.Name,
+        'Fan Mode',
+      );
       this.fanModeService
         .getCharacteristic(this.platform.Characteristic.On)
         .onSet(async value =>
@@ -166,10 +172,10 @@ export class ElectraPlatformAccessory {
     POLLING:
     Poll every 30 seconds (30000ms). // ToDo: Make interval configurable.
     Electra's servers might temporarily block IP if they see too many requests.
-    30–60 seconds is usually the "sweet spot" for responsiveness versus stability.
+    60–90 seconds is usually the "sweet spot" for responsiveness versus stability.
     */
     const pollInterval =
-      ((this.platform.config.pollInterval as number) || 30) * 1000;
+      ((this.platform.config.options.pollInterval as number) || 60) * 1000;
     setInterval(() => this.pollDeviceStatus(), pollInterval);
   }
 
