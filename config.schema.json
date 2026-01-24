@@ -38,11 +38,18 @@
         "title": "Additional Options",
         "type": "object",
         "properties": {
-          "debug": {
-            "title": "Enable Debug Logging",
+          "hideDryMode": {
+            "title": "Hide Dry Mode Switch",
             "type": "boolean",
-            "default": false
-          }
+            "default": true,
+            "description": "Removes the separate Dry Mode switch from the Home app."
+          },
+          "hideFanMode": {
+            "title": "Hide Fan Mode Switch",
+            "type": "boolean",
+            "default": true,
+            "description": "Removes the separate Fan Mode switch from the Home app."
+            }
         }
       }
     }

@@ -6,6 +6,7 @@ export class ElectraPlatformAccessory {
   private service: Service;
   private dryService: Service;
   private fanModeService: Service;
+  private filterService: Service;
 
   constructor(
     private readonly platform: ElectraSmartPlatform,
@@ -37,26 +38,63 @@ export class ElectraPlatformAccessory {
       this.accessory.addService(this.platform.Service.HeaterCooler);
 
     // 2. DRY MODE Switch
-    this.dryService =
-      this.accessory.getService('Dry Mode') ||
-      this.accessory.addService(
-        this.platform.Service.Switch,
-        'Dry Mode',
-        'dry-mode-switch',
-      );
+    if (!this.platform.config.hideDryMode) {
+      this.dryService =
+        this.accessory.getService('Dry Mode') ||
+        this.accessory.addService(
+          this.platform.Service.Switch,
+          'Dry Mode',
+          'dry-mode-switch',
+        );
+
+      this.dryService
+        .getCharacteristic(this.platform.Characteristic.On)
+        .onSet(async value =>
+          value ? await this.setCustomMode('DRY') : await this.setActive(0),
+        );
+    } else {
+      // If user wants it hidden, remove the service if it exists
+      const existingDry = this.accessory.getService('Dry Mode');
+      if (existingDry) {
+        this.accessory.removeService(existingDry);
+      }
+    }
 
     // 3. FAN MODE Switch
-    this.fanModeService =
-      this.accessory.getService('Fan Mode') ||
+    if (!this.platform.config.hideFanMode) {
+      this.fanModeService =
+        this.accessory.getService('Fan Mode') ||
+        this.accessory.addService(
+          this.platform.Service.Switch,
+          'Fan Mode',
+          'fan-mode-switch',
+        );
+
+      this.fanModeService
+        .getCharacteristic(this.platform.Characteristic.On)
+        .onSet(async value =>
+          value ? await this.setCustomMode('FAN') : await this.setActive(0),
+        );
+    } else {
+      const existingFan = this.accessory.getService('Fan Mode');
+      if (existingFan) {
+        this.accessory.removeService(existingFan);
+      }
+    }
+
+    // 4. FILTER Changne Indicator
+    this.filterService =
+      this.accessory.getService('Filter Change Indicator') ||
       this.accessory.addService(
-        this.platform.Service.Switch,
-        'Fan Mode',
-        'fan-mode-switch',
+        this.platform.Service.FilterMaintenance,
+        'Filter Change Indicator',
+        'filter-change-indicator',
       );
 
     // GROUPING: Linking services tells the Home App they belong together
     this.service.addLinkedService(this.dryService);
     this.service.addLinkedService(this.fanModeService);
+    this.service.addLinkedService(this.filterService);
 
     // --- Characteristic Bindings ---
     this.service
@@ -116,13 +154,19 @@ export class ElectraPlatformAccessory {
         value ? await this.setCustomMode('FAN') : await this.setActive(0),
       );
 
+    this.filterService
+      .getCharacteristic(this.platform.Characteristic.FilterChangeIndication)
+      .onGet(this.getFilterStatus.bind(this));
+
     /*
     POLLING:
     Poll every 30 seconds (30000ms). // ToDo: Make interval configurable.
     Electra's servers might temporarily block IP if they see too many requests.
     30–60 seconds is usually the "sweet spot" for responsiveness versus stability.
     */
-    setInterval(() => this.pollDeviceStatus(), 30000);
+    const pollInterval =
+      ((this.platform.config.pollInterval as number) || 30) * 1000;
+    setInterval(() => this.pollDeviceStatus(), pollInterval);
   }
 
   // HELPER: The library lacks getDeviceStatus, so we filter getDevices
@@ -130,16 +174,10 @@ export class ElectraPlatformAccessory {
     try {
       const deviceId = this.accessory.context.device.id;
       const telemetry = await this.platform.client?.getTelemetry(deviceId);
-
       this.platform.log.debug(
         `[${this.accessory.context.device.name}] Live Telemetry:`,
         telemetry,
       );
-      // DEBUG: Copy this from your Homebridge logs to see the REAL data structure
-      // this.platform.log.debug(
-      //   'FULL DEVICES DATA:',
-      //   JSON.stringify(devices, null, 2),
-      // );
 
       return {
         oper: telemetry?.OPER,
@@ -165,6 +203,7 @@ export class ElectraPlatformAccessory {
           'STBY',
         );
       }
+      this.platform.log.info(`Set Active to: ${value}`);
     } catch (error) {
       this.platform.log.error('Failed to set Active state:', error);
     }
@@ -172,11 +211,13 @@ export class ElectraPlatformAccessory {
 
   async getActive(): Promise<CharacteristicValue> {
     const status = await this.getDeviceStatus();
+    this.platform.log.debug('Active State:', status?.oper?.AC_MODE);
     return status?.oper?.AC_MODE === 'STBY' ? 0 : 1;
   }
 
   async getCurrentState(): Promise<CharacteristicValue> {
     const status = await this.getDeviceStatus();
+    this.platform.log.debug('Current State:', status?.oper?.AC_MODE);
     switch (status?.oper?.AC_MODE) {
       case 'COOL':
         return this.platform.Characteristic.CurrentHeaterCoolerState.COOLING;
@@ -193,7 +234,7 @@ export class ElectraPlatformAccessory {
 
   async getCurrentTemperature(): Promise<CharacteristicValue> {
     const status = await this.getDeviceStatus();
-    this.platform.log.debug('Raw Temperature from API:', status?.diag?.I_RAT);
+    this.platform.log.debug('Current Temperature:', status?.diag?.I_RAT);
     return status?.diag?.I_RAT || 22;
   }
 
@@ -202,10 +243,12 @@ export class ElectraPlatformAccessory {
       this.accessory.context.device.id,
       value as number,
     );
+    this.platform.log.info(`Set Target Temperature to: ${value}`);
   }
 
   async getTargetTemperature(): Promise<CharacteristicValue> {
     const status = await this.getDeviceStatus();
+    this.platform.log.debug('Target Temperature:', status?.oper?.SPT);
     return status?.oper?.SPT || 24;
   }
 
@@ -222,9 +265,6 @@ export class ElectraPlatformAccessory {
         mode = 'AUTO';
         break;
     }
-
-    this.platform.log.info(`Changing mode to: ${mode}`);
-
     await this.platform.client?.setMode(this.accessory.context.device.id, mode);
     // If we switch to Heat/Cool/Auto, turn off Dry/Fan switches
     this.dryService.updateCharacteristic(
@@ -235,10 +275,12 @@ export class ElectraPlatformAccessory {
       this.platform.Characteristic.On,
       false,
     );
+    this.platform.log.info(`Changing mode to: ${mode}`);
   }
 
   async getTargetState(): Promise<CharacteristicValue> {
     const status = await this.getDeviceStatus();
+    this.platform.log.debug('Target State:', status?.oper?.AC_MODE);
     switch (status?.oper?.AC_MODE) {
       case 'COOL':
         return this.platform.Characteristic.TargetHeaterCoolerState.COOL;
@@ -265,10 +307,12 @@ export class ElectraPlatformAccessory {
       this.accessory.context.device.id,
       electraSpeed,
     );
+    this.platform.log.info(`Set Rotation Speed to: ${electraSpeed}`);
   }
 
   async getRotationSpeed(): Promise<CharacteristicValue> {
     const status = await this.getDeviceStatus();
+    this.platform.log.debug('Rotation Speed:', status?.oper?.FANSPD);
     switch (status?.oper?.FANSPD) {
       case 'HIGH':
         return 100;
@@ -305,7 +349,7 @@ export class ElectraPlatformAccessory {
   //     : this.platform.Characteristic.SwingMode.SWING_DISABLED;
   // }
 
-  private async setCustomMode(mode: 'DRY' | 'FAN') {
+  async setCustomMode(mode: 'DRY' | 'FAN') {
     try {
       await this.platform.client?.setMode(
         this.accessory.context.device.id,
@@ -320,9 +364,30 @@ export class ElectraPlatformAccessory {
         mode === 'FAN',
       );
       this.service.updateCharacteristic(this.platform.Characteristic.Active, 1);
+      this.platform.log.info(`Set mode to: ${mode}`);
     } catch (error) {
       this.platform.log.error(`Failed to set ${mode} mode:`, error);
     }
+  }
+
+  async getFilterStatus(): Promise<CharacteristicValue> {
+    const status = await this.getDeviceStatus();
+    this.platform.log.debug('Filter Status:', status?.oper?.CLEAR_FILT);
+    const needsCleaning = status?.oper?.CLEAR_FILT === 'ON';
+    if (needsCleaning) {
+      this.platform.log.info(
+        'Filter cleaning detected! Sending auto-reset command...',
+      );
+      this.platform.client
+        ?.sendCommand(this.accessory.context.device.id, {
+          CLEAR_FILT: 'OFF',
+        } as Record<string, string>)
+        .catch(error => this.platform.log.error('Auto-reset failed:', error));
+
+      return this.platform.Characteristic.FilterChangeIndication.CHANGE_FILTER;
+    }
+
+    return this.platform.Characteristic.FilterChangeIndication.FILTER_OK;
   }
 
   async pollDeviceStatus() {
@@ -337,23 +402,19 @@ export class ElectraPlatformAccessory {
         status.oper?.AC_MODE === 'STBY' ? 0 : 1,
       );
       this.service.updateCharacteristic(
-        this.platform.Characteristic.CurrentTemperature,
-        status.diag?.I_CALC_AT as string,
+        this.platform.Characteristic.CurrentHeaterCoolerState,
+        status.oper?.AC_MODE === 'COOL'
+          ? this.platform.Characteristic.CurrentHeaterCoolerState.COOLING
+          : status.oper?.AC_MODE === 'HEAT'
+            ? this.platform.Characteristic.CurrentHeaterCoolerState.HEATING
+            : status.oper?.AC_MODE === 'AUTO'
+              ? this.platform.Characteristic.CurrentHeaterCoolerState.IDLE
+              : this.platform.Characteristic.CurrentHeaterCoolerState.INACTIVE,
       );
       this.service.updateCharacteristic(
-        this.platform.Characteristic.CoolingThresholdTemperature,
-        status.oper?.SPT as string,
+        this.platform.Characteristic.CurrentTemperature,
+        status.diag?.I_RAT as string,
       );
-
-      this.dryService.updateCharacteristic(
-        this.platform.Characteristic.On,
-        status.oper?.AC_MODE === 'DRY',
-      );
-      this.fanModeService.updateCharacteristic(
-        this.platform.Characteristic.On,
-        status.oper?.AC_MODE === 'FAN',
-      );
-
       let targetState =
         this.platform.Characteristic.TargetHeaterCoolerState.AUTO;
       if (status.oper?.AC_MODE === 'COOL') {
@@ -365,6 +426,48 @@ export class ElectraPlatformAccessory {
       this.service.updateCharacteristic(
         this.platform.Characteristic.TargetHeaterCoolerState,
         targetState,
+      );
+      this.service.updateCharacteristic(
+        this.platform.Characteristic.CoolingThresholdTemperature,
+        status.oper?.SPT as string,
+      );
+      this.service.updateCharacteristic(
+        this.platform.Characteristic.HeatingThresholdTemperature,
+        status.oper?.SPT as string,
+      );
+
+      let rotationSpeed = 0;
+      switch (status.oper?.FANSPD) {
+        case 'HIGH':
+          rotationSpeed = 100;
+          break;
+        case 'MED':
+          rotationSpeed = 50;
+          break;
+        case 'LOW':
+          rotationSpeed = 25;
+          break;
+        default:
+          rotationSpeed = 0;
+      }
+      this.service.updateCharacteristic(
+        this.platform.Characteristic.RotationSpeed,
+        rotationSpeed,
+      );
+
+      this.dryService?.updateCharacteristic(
+        this.platform.Characteristic.On,
+        status.oper?.AC_MODE === 'DRY',
+      );
+      this.fanModeService?.updateCharacteristic(
+        this.platform.Characteristic.On,
+        status.oper?.AC_MODE === 'FAN',
+      );
+      this.filterService.updateCharacteristic(
+        this.platform.Characteristic.FilterChangeIndication,
+        status.oper?.CLEAR_FILT === 'ON'
+          ? this.platform.Characteristic.FilterChangeIndication.CHANGE_FILTER
+          : this.platform.Characteristic.FilterChangeIndication.FILTER_OK,
       );
     } catch (error) {
       this.platform.log.error('Polling error:', error);
