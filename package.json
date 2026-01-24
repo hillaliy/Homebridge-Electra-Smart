@@ -1,5 +1,5 @@
 {
-  "name": "Homebridge-Electra-Smart",
+  "name": "homebridge-electra-smart-v2",
   "displayName": "Electra Smart A/C",
   "type": "module",
   "version": "1.0.0",
@@ -30,6 +30,7 @@
     "watch": "npm run build && npm link && nodemon"
   },
   "dependencies": {
+    "electra-smart-js-client": "^1.0.1",
     "homebridge-lib": "^7.1.12"
   },
   "devDependencies": {

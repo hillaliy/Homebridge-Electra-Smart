@@ -2,16 +2,48 @@
   "pluginAlias": "ElectraSmartPlatform",
   "pluginType": "platform",
   "singular": true,
+  "headerDisplay": "Manage your Electra Smart AC units in HomeKit.",
   "strictValidation": false,
   "schema": {
     "type": "object",
-    "required": ["name"],
+    "required": ["name", "imei", "token"],
     "additionalProperties": false,
     "properties": {
       "name": {
-        "title": "Name",
+        "title": "Platform Name",
         "type": "string",
-        "default": "Example Dynamic Platform"
+        "default": "ElectraSmart",
+        "required": true
+      },
+      "imei": {
+        "title": "IMEI",
+        "type": "string",
+        "required": true,
+        "description": "The IMEI of your mobile device registered with Electra."
+      },
+      "token": {
+        "title": "Authentication Token",
+        "type": "string",
+        "required": true,
+        "description": "The API token obtained from the Electra Smart app/service."
+      },
+      "pollInterval": {
+        "title": "Polling Interval (Seconds)",
+        "type": "integer",
+        "default": 30,
+        "minimum": 10,
+        "description": "How often to check for status changes (recommended 30-60s)."
+      },
+      "options": {
+        "title": "Additional Options",
+        "type": "object",
+        "properties": {
+          "debug": {
+            "title": "Enable Debug Logging",
+            "type": "boolean",
+            "default": false
+          }
+        }
       }
     }
   }

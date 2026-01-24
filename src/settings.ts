@@ -6,4 +6,4 @@ export const PLATFORM_NAME = 'ElectraSmartPlatform';
 /**
  * This must match the name of your plugin as defined the package.json `name` property
  */
-export const PLUGIN_NAME = 'Homebridge-Electra-Smart';
+export const PLUGIN_NAME = 'homebridge-electra-smart-v2';
