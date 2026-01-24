@@ -43,5 +43,8 @@
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.4"
+  },
+  "bin": {
+    "electra-setup": "./dist/setup-cli.js"
   }
 }

@@ -1,38 +1,25 @@
 {
   "pluginAlias": "ElectraSmartPlatform",
   "pluginType": "platform",
+  "customUi": true,
   "singular": true,
   "headerDisplay": "Manage your Electra Smart AC units in HomeKit.",
   "strictValidation": false,
   "schema": {
     "type": "object",
-    "required": ["name", "imei", "token"],
-    "additionalProperties": false,
     "properties": {
-      "name": {
-        "title": "Platform Name",
-        "type": "string",
-        "default": "ElectraSmart",
-        "required": true
-      },
       "imei": {
         "title": "IMEI",
-        "type": "string",
-        "required": true,
-        "description": "The IMEI of your mobile device registered with Electra."
+        "type": "string"
       },
       "token": {
-        "title": "Authentication Token",
-        "type": "string",
-        "required": true,
-        "description": "The API token obtained from the Electra Smart app/service."
+        "title": "Access Token",
+        "type": "string"
       },
-      "pollInterval": {
-        "title": "Polling Interval (Seconds)",
-        "type": "integer",
-        "default": 30,
-        "minimum": 10,
-        "description": "How often to check for status changes (recommended 30-60s)."
+      "phoneNumber": {
+        "title": "Registration Phone Number",
+        "type": "string",
+        "description": "Use this to fetch your IMEI and Token if you don't have them."
       },
       "options": {
         "title": "Additional Options",
@@ -49,9 +36,26 @@
             "type": "boolean",
             "default": true,
             "description": "Removes the separate Fan Mode switch from the Home app."
-            }
+          },
+          "pollInterval": {
+            "title": "Polling Interval (Seconds)",
+            "type": "integer",
+            "default": 60,
+            "minimum": 30,
+            "description": "How often to check for status changes (recommended 30-60s)."
+          }
         }
       }
     }
-  }
+  },
+  "layout": [
+    "phoneNumber",
+    {
+      "type": "help",
+      "helpvalue": "<button id='otp-btn' class='btn btn-primary'>Request SMS Code</button>"
+    },
+    "imei",
+    "token",
+    "options"
+  ]
 }

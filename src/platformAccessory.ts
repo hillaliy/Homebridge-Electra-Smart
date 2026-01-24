@@ -4,8 +4,8 @@ import { ElectraSmartPlatform } from './platform.js';
 
 export class ElectraPlatformAccessory {
   private service: Service;
-  private dryService: Service;
-  private fanModeService: Service;
+  private dryService?: Service;
+  private fanModeService?: Service;
   private filterService: Service;
 
   constructor(
@@ -92,8 +92,12 @@ export class ElectraPlatformAccessory {
       );
 
     // GROUPING: Linking services tells the Home App they belong together
-    this.service.addLinkedService(this.dryService);
-    this.service.addLinkedService(this.fanModeService);
+    if (this.dryService) {
+      this.service.addLinkedService(this.dryService);
+    }
+    if (this.fanModeService) {
+      this.service.addLinkedService(this.fanModeService);
+    }
     this.service.addLinkedService(this.filterService);
 
     // --- Characteristic Bindings ---
@@ -143,13 +147,13 @@ export class ElectraPlatformAccessory {
     //   .onGet(this.getSwingMode.bind(this));
 
     this.dryService
-      .getCharacteristic(this.platform.Characteristic.On)
+      ?.getCharacteristic(this.platform.Characteristic.On)
       .onSet(async value =>
         value ? await this.setCustomMode('DRY') : await this.setActive(0),
       );
 
     this.fanModeService
-      .getCharacteristic(this.platform.Characteristic.On)
+      ?.getCharacteristic(this.platform.Characteristic.On)
       .onSet(async value =>
         value ? await this.setCustomMode('FAN') : await this.setActive(0),
       );
@@ -267,11 +271,11 @@ export class ElectraPlatformAccessory {
     }
     await this.platform.client?.setMode(this.accessory.context.device.id, mode);
     // If we switch to Heat/Cool/Auto, turn off Dry/Fan switches
-    this.dryService.updateCharacteristic(
+    this.dryService?.updateCharacteristic(
       this.platform.Characteristic.On,
       false,
     );
-    this.fanModeService.updateCharacteristic(
+    this.fanModeService?.updateCharacteristic(
       this.platform.Characteristic.On,
       false,
     );
@@ -355,11 +359,11 @@ export class ElectraPlatformAccessory {
         this.accessory.context.device.id,
         mode,
       );
-      this.dryService.updateCharacteristic(
+      this.dryService?.updateCharacteristic(
         this.platform.Characteristic.On,
         mode === 'DRY',
       );
-      this.fanModeService.updateCharacteristic(
+      this.fanModeService?.updateCharacteristic(
         this.platform.Characteristic.On,
         mode === 'FAN',
       );

@@ -1,0 +1,106 @@
+<div class="card card-body">
+  <div id="step-1">
+    <h4 class="mb-3">Connect Electra Smart</h4>
+    <p class="text-muted small">
+      Enter your phone number to receive a one-time login code.
+    </p>
+    <div class="form-group">
+      <label for="phone-input">Phone Number</label>
+      <input
+        type="text"
+        id="phone-input"
+        placeholder="0501234567"
+        class="form-control"
+      />
+    </div>
+    <button id="send-otp-btn" class="btn btn-primary btn-block mt-3">
+      Send SMS Code
+    </button>
+  </div>
+
+  <div id="step-2" style="display: none">
+    <h4 class="mb-3">Verify SMS Code</h4>
+    <p class="text-muted small">Enter the 4-digit code sent to your phone.</p>
+    <div class="form-group">
+      <label for="otp-input">Verification Code</label>
+      <input
+        type="text"
+        id="otp-input"
+        placeholder="1234"
+        class="form-control text-center"
+        style="letter-spacing: 10px; font-size: 1.5rem"
+      />
+    </div>
+    <button id="verify-btn" class="btn btn-success btn-block mt-3">
+      Verify & Connect
+    </button>
+    <button id="back-btn" class="btn btn-link btn-sm btn-block mt-2">
+      Change Phone Number
+    </button>
+  </div>
+
+  <div id="setup-complete" style="display: none" class="text-center py-4">
+    <i class="fa fa-check-circle fa-3x text-success mb-3"></i>
+    <h5>Account Linked!</h5>
+    <p class="text-muted">Restart Homebridge to apply changes.</p>
+  </div>
+</div>
+
+<script>
+  (async () => {
+    const hb = window.homebridge;
+
+    // Initial State Check
+    const config = await hb.getPluginConfig();
+    if (config[0]?.token && config[0]?.imei) {
+      document.getElementById('step-1').style.display = 'none';
+      document.getElementById('setup-complete').style.display = 'block';
+      hb.showSchemaForm();
+    }
+
+    document.getElementById('send-otp-btn').onclick = async () => {
+      const phone = document.getElementById('phone-input').value;
+      if (!phone) return hb.toast.error('Phone number required');
+      hb.showSpinner();
+      try {
+        await hb.request('/request-otp', { phone });
+        document.getElementById('step-1').style.display = 'none';
+        document.getElementById('step-2').style.display = 'block';
+        hb.toast.success('SMS Sent');
+      } catch (err) {
+        hb.toast.error(err.message);
+      } finally {
+        hb.hideSpinner();
+      }
+    };
+
+    document.getElementById('verify-btn').onclick = async () => {
+      const otp = document.getElementById('otp-input').value;
+      const phone = document.getElementById('phone-input').value;
+      hb.showSpinner();
+      try {
+        const res = await hb.request('/verify-otp', { phone, otp });
+        const config = await hb.getPluginConfig();
+        const current = config[0] || { platform: 'ElectraSmartPlatform' };
+        current.imei = res.imei;
+        current.token = res.token;
+        await hb.updatePluginConfig([current]);
+        await hb.savePluginConfig();
+
+        document.getElementById('step-2').style.display = 'none';
+        document.getElementById('setup-complete').style.display = 'block';
+        hb.showSchemaForm();
+        hb.toast.success('Success!');
+      } catch (err) {
+        hb.toast.error(err.message);
+      } finally {
+        hb.hideSpinner();
+      }
+    };
+
+    document.getElementById('back-btn').onclick = () => {
+      document.getElementById('step-2').style.display = 'none';
+      document.getElementById('step-1').style.display = 'block';
+    };
+  })();
+</script>
