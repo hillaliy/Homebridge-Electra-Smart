@@ -27,15 +27,17 @@ export class ElectraSmartPlatform implements DynamicPlatformPlugin {
     public readonly config: PlatformConfig,
     public readonly api: API,
   ) {
+    // 1. Setup basic HAP references (Sync)
     this.Service = api.hap.Service;
     this.Characteristic = api.hap.Characteristic;
 
     this.log.debug('Finished initializing platform:', this.config.name);
 
-    // Initialize client and discover devices
+    // 2. Wait for the Homebridge boot to finish
     this.api.on('didFinishLaunching', async () => {
       this.log.debug('Executed didFinishLaunching callback');
 
+      this.initializeAndDiscover();
       const success = await this.initializeElectraSmartClient();
       if (success) {
         await this.discoverDevices();
@@ -45,6 +47,18 @@ export class ElectraSmartPlatform implements DynamicPlatformPlugin {
         );
       }
     });
+  }
+
+  // 3. Initialize client and discover devices
+  private async initializeAndDiscover() {
+    try {
+      const success = await this.initializeElectraSmartClient();
+      if (success) {
+        await this.discoverDevices();
+      }
+    } catch (error) {
+      this.log.error('Unexpected error during startup:', error);
+    }
   }
 
   // Required by Homebridge to restore cached accessories
