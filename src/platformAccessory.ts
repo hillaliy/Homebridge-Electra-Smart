@@ -6,7 +6,6 @@ export class ElectraPlatformAccessory {
   private service: Service;
   private dryService?: Service;
   private fanModeService?: Service;
-  private filterService: Service;
 
   constructor(
     private readonly platform: ElectraSmartPlatform,
@@ -88,15 +87,6 @@ export class ElectraPlatformAccessory {
       }
     }
 
-    // 4. FILTER Changne Indicator
-    this.filterService =
-      this.accessory.getService('Filter Change Indicator') ||
-      this.accessory.addService(
-        this.platform.Service.FilterMaintenance,
-        'Filter Change Indicator',
-        'filter-change-indicator',
-      );
-
     // GROUPING: Linking services tells the Home App they belong together
     if (this.dryService) {
       this.service.addLinkedService(this.dryService);
@@ -104,7 +94,6 @@ export class ElectraPlatformAccessory {
     if (this.fanModeService) {
       this.service.addLinkedService(this.fanModeService);
     }
-    this.service.addLinkedService(this.filterService);
 
     // --- Characteristic Bindings ---
     this.service
@@ -152,6 +141,34 @@ export class ElectraPlatformAccessory {
     //   .onSet(this.setSwingMode.bind(this))
     //   .onGet(this.getSwingMode.bind(this));
 
+    this.service
+      .getCharacteristic(this.platform.Characteristic.FilterChangeIndication)
+      .onGet(() => {
+        return this.accessory.context.device.filterDirty ? 1 : 0;
+      });
+
+    this.service
+      .getCharacteristic(this.platform.Characteristic.FilterLifeLevel)
+      .onGet(() => {
+        return this.accessory.context.device.filterDirty ? 0 : 100;
+      });
+    this.service
+      .getCharacteristic(this.platform.Characteristic.ResetFilterIndication)
+      .onSet((value: CharacteristicValue) => {
+        if (value === 1) {
+          this.platform.log.info('Resetting filter status for AC...');
+          this.accessory.context.device.filterDirty = false;
+
+          this.platform.client
+            ?.sendCommand(this.accessory.context.device.id, {
+              CLEAR_FILT: 'OFF',
+            })
+            .catch(error =>
+              this.platform.log.error('Failed to reset filter:', error),
+            );
+        }
+      });
+
     this.dryService
       ?.getCharacteristic(this.platform.Characteristic.On)
       .onSet(async value =>
@@ -163,10 +180,6 @@ export class ElectraPlatformAccessory {
       .onSet(async value =>
         value ? await this.setCustomMode('FAN') : await this.setActive(0),
       );
-
-    this.filterService
-      .getCharacteristic(this.platform.Characteristic.FilterChangeIndication)
-      .onGet(this.getFilterStatus.bind(this));
 
     /*
     POLLING:
@@ -380,26 +393,6 @@ export class ElectraPlatformAccessory {
     }
   }
 
-  async getFilterStatus(): Promise<CharacteristicValue> {
-    const status = await this.getDeviceStatus();
-    this.platform.log.debug('Filter Status:', status?.oper?.CLEAR_FILT);
-    const needsCleaning = status?.oper?.CLEAR_FILT === 'ON';
-    if (needsCleaning) {
-      this.platform.log.info(
-        'Filter cleaning detected! Sending auto-reset command...',
-      );
-      this.platform.client
-        ?.sendCommand(this.accessory.context.device.id, {
-          CLEAR_FILT: 'OFF',
-        } as Record<string, string>)
-        .catch(error => this.platform.log.error('Auto-reset failed:', error));
-
-      return this.platform.Characteristic.FilterChangeIndication.CHANGE_FILTER;
-    }
-
-    return this.platform.Characteristic.FilterChangeIndication.FILTER_OK;
-  }
-
   async pollDeviceStatus() {
     try {
       const status = await this.getDeviceStatus();
@@ -472,12 +465,6 @@ export class ElectraPlatformAccessory {
       this.fanModeService?.updateCharacteristic(
         this.platform.Characteristic.On,
         status.oper?.AC_MODE === 'FAN',
-      );
-      this.filterService.updateCharacteristic(
-        this.platform.Characteristic.FilterChangeIndication,
-        status.oper?.CLEAR_FILT === 'ON'
-          ? this.platform.Characteristic.FilterChangeIndication.CHANGE_FILTER
-          : this.platform.Characteristic.FilterChangeIndication.FILTER_OK,
       );
     } catch (error) {
       this.platform.log.error('Polling error:', error);
