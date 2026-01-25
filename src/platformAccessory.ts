@@ -1,11 +1,25 @@
-/* eslint-disable indent */
 import { CharacteristicValue, PlatformAccessory, Service } from 'homebridge';
 import { ElectraSmartPlatform } from './platform.js';
+
+interface ElectraStatus {
+  oper?: {
+    AC_MODE?: string;
+    SPT?: string;
+    FANSPD?: string;
+    CLEAR_FILT?: string;
+    V_SWING?: string;
+  };
+  diag?: {
+    I_RAT?: string | number;
+  };
+}
 
 export class ElectraPlatformAccessory {
   private service: Service;
   private dryService?: Service;
   private fanModeService?: Service;
+  // Cache to store the last status and avoid "Slow to respond" warnings
+  private lastStatus: ElectraStatus | null = null;
 
   constructor(
     private readonly platform: ElectraSmartPlatform,
@@ -55,7 +69,6 @@ export class ElectraPlatformAccessory {
           value ? await this.setCustomMode('DRY') : await this.setActive(0),
         );
     } else {
-      // If user wants it hidden, remove the service if it exists
       const existingDry = this.accessory.getService('Dry Mode');
       if (existingDry) {
         this.accessory.removeService(existingDry);
@@ -87,7 +100,6 @@ export class ElectraPlatformAccessory {
       }
     }
 
-    // GROUPING: Linking services tells the Home App they belong together
     if (this.dryService) {
       this.service.addLinkedService(this.dryService);
     }
@@ -95,170 +107,151 @@ export class ElectraPlatformAccessory {
       this.service.addLinkedService(this.fanModeService);
     }
 
-    // --- Characteristic Bindings ---
+    // --- Characteristic Bindings (Using Cache for all GETs) ---
+
+    // Active State
     this.service
       .getCharacteristic(this.platform.Characteristic.Active)
       .onSet(this.setActive.bind(this))
-      .onGet(this.getActive.bind(this));
+      .onGet(() => (this.lastStatus?.oper?.AC_MODE === 'STBY' ? 0 : 1));
 
+    // Current Mode (Cooling/Heating/Idle)
     this.service
       .getCharacteristic(this.platform.Characteristic.CurrentHeaterCoolerState)
       .onGet(this.getCurrentState.bind(this));
 
+    // Current Temperature (Room)
     this.service
       .getCharacteristic(this.platform.Characteristic.CurrentTemperature)
-      .onGet(this.getCurrentTemperature.bind(this));
+      .onGet(() => {
+        const temp = this.lastStatus?.diag?.I_RAT;
+        return temp ? parseFloat(temp.toString()) : 22;
+      });
 
+    // Target Mode (Auto/Cool/Heat)
     this.service
       .getCharacteristic(this.platform.Characteristic.TargetHeaterCoolerState)
       .onSet(this.setTargetState.bind(this))
       .onGet(this.getTargetState.bind(this));
 
+    // Cooling Temp Setpoint
     this.service
       .getCharacteristic(
         this.platform.Characteristic.CoolingThresholdTemperature,
       )
       .setProps({ minStep: 1, minValue: 16, maxValue: 30 })
       .onSet(this.setTargetTemperature.bind(this))
-      .onGet(this.getTargetTemperature.bind(this));
+      .onGet(() => {
+        const temp = this.lastStatus?.oper?.SPT;
+        return temp ? parseInt(temp, 10) : 24;
+      });
 
+    // Heating Temp Setpoint
     this.service
       .getCharacteristic(
         this.platform.Characteristic.HeatingThresholdTemperature,
       )
       .setProps({ minStep: 1, minValue: 16, maxValue: 30 })
       .onSet(this.setTargetTemperature.bind(this))
-      .onGet(this.getTargetTemperature.bind(this));
+      .onGet(() => {
+        const temp = this.lastStatus?.oper?.SPT;
+        return temp ? parseInt(temp, 10) : 24;
+      });
 
+    // Fan Speed
     this.service
       .getCharacteristic(this.platform.Characteristic.RotationSpeed)
       .setProps({ minStep: 25, minValue: 0, maxValue: 100 })
       .onSet(this.setRotationSpeed.bind(this))
       .onGet(this.getRotationSpeed.bind(this));
 
-    // this.service
-    //   .getCharacteristic(this.platform.Characteristic.SwingMode)
-    //   .onSet(this.setSwingMode.bind(this))
-    //   .onGet(this.getSwingMode.bind(this));
-
+    // Filter Indication
     this.service
       .getCharacteristic(this.platform.Characteristic.FilterChangeIndication)
-      .onGet(() => {
-        return this.accessory.context.device.filterDirty ? 1 : 0;
-      });
+      .onGet(() => (this.lastStatus?.oper?.CLEAR_FILT === 'ON' ? 1 : 0));
 
     this.service
       .getCharacteristic(this.platform.Characteristic.FilterLifeLevel)
-      .onGet(() => {
-        return this.accessory.context.device.filterDirty ? 0 : 100;
-      });
+      .onGet(() => (this.lastStatus?.oper?.CLEAR_FILT === 'ON' ? 0 : 100));
+
     this.service
       .getCharacteristic(this.platform.Characteristic.ResetFilterIndication)
-      .onSet((value: CharacteristicValue) => {
+      .onSet(async value => {
         if (value === 1) {
           this.platform.log.info('Resetting filter status for AC...');
-          this.accessory.context.device.filterDirty = false;
-
-          this.platform.client
-            ?.sendCommand(this.accessory.context.device.id, {
-              CLEAR_FILT: 'OFF',
-            })
-            .catch(error =>
-              this.platform.log.error('Failed to reset filter:', error),
-            );
+          await this.platform.client?.sendCommand(
+            this.accessory.context.device.id,
+            { CLEAR_FILT: 'OFF' },
+          );
+          setTimeout(() => this.pollDeviceStatus(), 2000);
         }
       });
 
-    this.dryService
-      ?.getCharacteristic(this.platform.Characteristic.On)
-      .onSet(async value =>
-        value ? await this.setCustomMode('DRY') : await this.setActive(0),
-      );
-
-    this.fanModeService
-      ?.getCharacteristic(this.platform.Characteristic.On)
-      .onSet(async value =>
-        value ? await this.setCustomMode('FAN') : await this.setActive(0),
-      );
-
-    /*
-    POLLING:
-    Poll every 30 seconds (30000ms). // ToDo: Make interval configurable.
-    Electra's servers might temporarily block IP if they see too many requests.
-    60–90 seconds is usually the "sweet spot" for responsiveness versus stability.
-    */
+    // Start Polling
     const pollInterval =
       ((this.platform.config.options.pollInterval as number) || 60) * 1000;
     setInterval(() => this.pollDeviceStatus(), pollInterval);
+
+    // Initial fetch to fill the cache
+    this.pollDeviceStatus();
   }
 
-  // HELPER: The library lacks getDeviceStatus, so we filter getDevices
-  private async getDeviceStatus() {
+  // HELPER: Fetch from Cloud
+  private async getDeviceStatusFromCloud() {
     try {
-      const deviceId = this.accessory.context.device.id;
-      const telemetry = await this.platform.client?.getTelemetry(deviceId);
-      this.platform.log.debug(
-        `[${this.accessory.context.device.name}] Live Telemetry:`,
-        telemetry,
+      const telemetry = await this.platform.client?.getTelemetry(
+        this.accessory.context.device.id,
       );
-
-      return {
-        oper: telemetry?.OPER,
-        diag: telemetry?.DIAG_L2,
-      };
+      return { oper: telemetry?.OPER, diag: telemetry?.DIAG_L2 };
     } catch (error) {
       this.platform.log.error('Failed to fetch telemetry:', error);
-      return undefined;
+      return null;
     }
   }
 
-  // --- Handlers ---
+  // --- Logic Helpers (Using lastStatus cache) ---
+  private getCurrentState(): CharacteristicValue {
+    const mode = this.lastStatus?.oper?.AC_MODE;
+    if (mode === 'COOL') {
+      return this.platform.Characteristic.CurrentHeaterCoolerState.COOLING;
+    }
+    if (mode === 'HEAT') {
+      return this.platform.Characteristic.CurrentHeaterCoolerState.HEATING;
+    }
+    return this.platform.Characteristic.CurrentHeaterCoolerState.IDLE;
+  }
+
+  private getTargetState(): CharacteristicValue {
+    const mode = this.lastStatus?.oper?.AC_MODE;
+    if (mode === 'COOL') {
+      return this.platform.Characteristic.TargetHeaterCoolerState.COOL;
+    }
+    if (mode === 'HEAT') {
+      return this.platform.Characteristic.TargetHeaterCoolerState.HEAT;
+    }
+    return this.platform.Characteristic.TargetHeaterCoolerState.AUTO;
+  }
+
+  private getRotationSpeed(): CharacteristicValue {
+    const speed = this.lastStatus?.oper?.FANSPD;
+    if (speed === 'HIGH') {
+      return 100;
+    }
+    if (speed === 'MED') {
+      return 50;
+    }
+    if (speed === 'LOW') {
+      return 25;
+    }
+    return 0;
+  }
+
+  // --- SET Handlers ---
   async setActive(value: CharacteristicValue) {
-    try {
-      if (value === this.platform.Characteristic.Active.ACTIVE) {
-        await this.platform.client?.setMode(
-          this.accessory.context.device.id,
-          'COOL',
-        );
-      } else {
-        await this.platform.client?.setMode(
-          this.accessory.context.device.id,
-          'STBY',
-        );
-      }
-      this.platform.log.info(`Set Active to: ${value}`);
-    } catch (error) {
-      this.platform.log.error('Failed to set Active state:', error);
-    }
-  }
-
-  async getActive(): Promise<CharacteristicValue> {
-    const status = await this.getDeviceStatus();
-    this.platform.log.debug('Active State:', status?.oper?.AC_MODE);
-    return status?.oper?.AC_MODE === 'STBY' ? 0 : 1;
-  }
-
-  async getCurrentState(): Promise<CharacteristicValue> {
-    const status = await this.getDeviceStatus();
-    this.platform.log.debug('Current State:', status?.oper?.AC_MODE);
-    switch (status?.oper?.AC_MODE) {
-      case 'COOL':
-        return this.platform.Characteristic.CurrentHeaterCoolerState.COOLING;
-      case 'HEAT':
-        return this.platform.Characteristic.CurrentHeaterCoolerState.HEATING;
-      case 'AUTO':
-      case 'FAN':
-      case 'DRY':
-        return this.platform.Characteristic.CurrentHeaterCoolerState.IDLE;
-      default:
-        return this.platform.Characteristic.CurrentHeaterCoolerState.INACTIVE;
-    }
-  }
-
-  async getCurrentTemperature(): Promise<CharacteristicValue> {
-    const status = await this.getDeviceStatus();
-    this.platform.log.debug('Current Temperature:', status?.diag?.I_RAT);
-    return status?.diag?.I_RAT || 22;
+    const mode = value === 1 ? 'COOL' : 'STBY';
+    await this.platform.client?.setMode(this.accessory.context.device.id, mode);
+    this.platform.log.info(`AC Active set to: ${mode}`);
+    setTimeout(() => this.pollDeviceStatus(), 2000);
   }
 
   async setTargetTemperature(value: CharacteristicValue) {
@@ -266,208 +259,91 @@ export class ElectraPlatformAccessory {
       this.accessory.context.device.id,
       value as number,
     );
-    this.platform.log.info(`Set Target Temperature to: ${value}`);
-  }
-
-  async getTargetTemperature(): Promise<CharacteristicValue> {
-    const status = await this.getDeviceStatus();
-    this.platform.log.debug('Target Temperature:', status?.oper?.SPT);
-    return status?.oper?.SPT || 24;
+    this.platform.log.info(`Target temperature set to: ${value}`);
   }
 
   async setTargetState(value: CharacteristicValue) {
-    let mode: 'COOL' | 'HEAT' | 'AUTO' = 'AUTO';
-    switch (value) {
-      case this.platform.Characteristic.TargetHeaterCoolerState.COOL:
-        mode = 'COOL';
-        break;
-      case this.platform.Characteristic.TargetHeaterCoolerState.HEAT:
-        mode = 'HEAT';
-        break;
-      case this.platform.Characteristic.TargetHeaterCoolerState.AUTO:
-        mode = 'AUTO';
-        break;
-    }
-    await this.platform.client?.setMode(this.accessory.context.device.id, mode);
-    // If we switch to Heat/Cool/Auto, turn off Dry/Fan switches
-    this.dryService?.updateCharacteristic(
-      this.platform.Characteristic.On,
-      false,
-    );
-    this.fanModeService?.updateCharacteristic(
-      this.platform.Characteristic.On,
-      false,
-    );
-    this.platform.log.info(`Changing mode to: ${mode}`);
-  }
+    const modes: Record<
+      number,
+      'COOL' | 'HEAT' | 'AUTO' | 'DRY' | 'FAN' | 'STBY'
+    > = {
+      [this.platform.Characteristic.TargetHeaterCoolerState.COOL]: 'COOL',
+      [this.platform.Characteristic.TargetHeaterCoolerState.HEAT]: 'HEAT',
+      [this.platform.Characteristic.TargetHeaterCoolerState.AUTO]: 'AUTO',
+    };
 
-  async getTargetState(): Promise<CharacteristicValue> {
-    const status = await this.getDeviceStatus();
-    this.platform.log.debug('Target State:', status?.oper?.AC_MODE);
-    switch (status?.oper?.AC_MODE) {
-      case 'COOL':
-        return this.platform.Characteristic.TargetHeaterCoolerState.COOL;
-      case 'HEAT':
-        return this.platform.Characteristic.TargetHeaterCoolerState.HEAT;
-      case 'AUTO':
-        return this.platform.Characteristic.TargetHeaterCoolerState.AUTO;
-      default:
-        return this.platform.Characteristic.TargetHeaterCoolerState.AUTO;
-    }
+    const mode = modes[value as number] || 'AUTO';
+
+    this.platform.log.info(`Target state set to: ${mode}`);
+
+    await this.platform.client?.setMode(this.accessory.context.device.id, mode);
   }
 
   async setRotationSpeed(value: CharacteristicValue) {
     const speed = value as number;
-    let electraSpeed: 'AUTO' | 'HIGH' | 'MED' | 'LOW' = 'AUTO';
-    if (speed > 75) {
-      electraSpeed = 'HIGH';
-    } else if (speed > 45) {
-      electraSpeed = 'MED';
-    } else if (speed > 10) {
-      electraSpeed = 'LOW';
-    }
+    const electraSpeed =
+      speed > 75 ? 'HIGH' : speed > 45 ? 'MED' : speed > 10 ? 'LOW' : 'AUTO';
     await this.platform.client?.setFanSpeed(
       this.accessory.context.device.id,
       electraSpeed,
     );
-    this.platform.log.info(`Set Rotation Speed to: ${electraSpeed}`);
   }
-
-  async getRotationSpeed(): Promise<CharacteristicValue> {
-    const status = await this.getDeviceStatus();
-    this.platform.log.debug('Rotation Speed:', status?.oper?.FANSPD);
-    switch (status?.oper?.FANSPD) {
-      case 'HIGH':
-        return 100;
-      case 'MED':
-        return 50;
-      case 'LOW':
-        return 25;
-      default:
-        return 0;
-    }
-  }
-
-  // async setSwingMode(value: CharacteristicValue) {
-  //   const isSwingOn =
-  //     value === this.platform.Characteristic.SwingMode.SWING_ENABLED;
-
-  //   this.platform.log.info(
-  //     `Setting Swing Mode to: ${isSwingOn ? 'ON' : 'OFF'}`,
-  //   );
-
-  //   await this.platform.client?.sendCommand(this.accessory.context.device.id, {
-  //     SWING: isSwingOn ? 'ON' : 'OFF',
-  //   } as any);
-  // }
-
-  // async getSwingMode(): Promise<CharacteristicValue> {
-  //   const status = await this.getDeviceStatus();
-  //   const swingState = status?.oper?.V_SWING;
-
-  //   this.platform.log.debug('Current Swing State:', swingState);
-
-  //   return swingState === 'ON'
-  //     ? this.platform.Characteristic.SwingMode.SWING_ENABLED
-  //     : this.platform.Characteristic.SwingMode.SWING_DISABLED;
-  // }
 
   async setCustomMode(mode: 'DRY' | 'FAN') {
-    try {
-      await this.platform.client?.setMode(
-        this.accessory.context.device.id,
-        mode,
-      );
-      this.dryService?.updateCharacteristic(
-        this.platform.Characteristic.On,
-        mode === 'DRY',
-      );
-      this.fanModeService?.updateCharacteristic(
-        this.platform.Characteristic.On,
-        mode === 'FAN',
-      );
-      this.service.updateCharacteristic(this.platform.Characteristic.Active, 1);
-      this.platform.log.info(`Set mode to: ${mode}`);
-    } catch (error) {
-      this.platform.log.error(`Failed to set ${mode} mode:`, error);
-    }
+    await this.platform.client?.setMode(this.accessory.context.device.id, mode);
+    setTimeout(() => this.pollDeviceStatus(), 2000);
   }
 
+  // --- POLLING: Update status and Push to HomeKit ---
   async pollDeviceStatus() {
-    try {
-      const status = await this.getDeviceStatus();
-      if (!status) {
-        return;
-      }
-
-      this.service.updateCharacteristic(
-        this.platform.Characteristic.Active,
-        status.oper?.AC_MODE === 'STBY' ? 0 : 1,
-      );
-      this.service.updateCharacteristic(
-        this.platform.Characteristic.CurrentHeaterCoolerState,
-        status.oper?.AC_MODE === 'COOL'
-          ? this.platform.Characteristic.CurrentHeaterCoolerState.COOLING
-          : status.oper?.AC_MODE === 'HEAT'
-            ? this.platform.Characteristic.CurrentHeaterCoolerState.HEATING
-            : status.oper?.AC_MODE === 'AUTO'
-              ? this.platform.Characteristic.CurrentHeaterCoolerState.IDLE
-              : this.platform.Characteristic.CurrentHeaterCoolerState.INACTIVE,
-      );
-      this.service.updateCharacteristic(
-        this.platform.Characteristic.CurrentTemperature,
-        status.diag?.I_RAT as string,
-      );
-      let targetState =
-        this.platform.Characteristic.TargetHeaterCoolerState.AUTO;
-      if (status.oper?.AC_MODE === 'COOL') {
-        targetState = this.platform.Characteristic.TargetHeaterCoolerState.COOL;
-      }
-      if (status.oper?.AC_MODE === 'HEAT') {
-        targetState = this.platform.Characteristic.TargetHeaterCoolerState.HEAT;
-      }
-      this.service.updateCharacteristic(
-        this.platform.Characteristic.TargetHeaterCoolerState,
-        targetState,
-      );
-      this.service.updateCharacteristic(
-        this.platform.Characteristic.CoolingThresholdTemperature,
-        status.oper?.SPT as string,
-      );
-      this.service.updateCharacteristic(
-        this.platform.Characteristic.HeatingThresholdTemperature,
-        status.oper?.SPT as string,
-      );
-
-      let rotationSpeed = 0;
-      switch (status.oper?.FANSPD) {
-        case 'HIGH':
-          rotationSpeed = 100;
-          break;
-        case 'MED':
-          rotationSpeed = 50;
-          break;
-        case 'LOW':
-          rotationSpeed = 25;
-          break;
-        default:
-          rotationSpeed = 0;
-      }
-      this.service.updateCharacteristic(
-        this.platform.Characteristic.RotationSpeed,
-        rotationSpeed,
-      );
-
-      this.dryService?.updateCharacteristic(
-        this.platform.Characteristic.On,
-        status.oper?.AC_MODE === 'DRY',
-      );
-      this.fanModeService?.updateCharacteristic(
-        this.platform.Characteristic.On,
-        status.oper?.AC_MODE === 'FAN',
-      );
-    } catch (error) {
-      this.platform.log.error('Polling error:', error);
+    const status = await this.getDeviceStatusFromCloud();
+    if (!status) {
+      return;
     }
+
+    this.lastStatus = status;
+
+    // Push updates to Homebridge immediately
+    this.service.updateCharacteristic(
+      this.platform.Characteristic.Active,
+      status.oper?.AC_MODE === 'STBY' ? 0 : 1,
+    );
+    this.service.updateCharacteristic(
+      this.platform.Characteristic.CurrentTemperature,
+      parseFloat(status.diag?.I_RAT?.toString() || '22'),
+    );
+    this.service.updateCharacteristic(
+      this.platform.Characteristic.CurrentHeaterCoolerState,
+      this.getCurrentState(),
+    );
+    this.service.updateCharacteristic(
+      this.platform.Characteristic.TargetHeaterCoolerState,
+      this.getTargetState(),
+    );
+    this.service.updateCharacteristic(
+      this.platform.Characteristic.RotationSpeed,
+      this.getRotationSpeed(),
+    );
+    this.service.updateCharacteristic(
+      this.platform.Characteristic.FilterChangeIndication,
+      status.oper?.CLEAR_FILT === 'ON' ? 1 : 0,
+    );
+    this.service.updateCharacteristic(
+      this.platform.Characteristic.CoolingThresholdTemperature,
+      parseInt(status.oper?.SPT || '24', 10),
+    );
+    this.service.updateCharacteristic(
+      this.platform.Characteristic.HeatingThresholdTemperature,
+      parseInt(status.oper?.SPT || '24', 10),
+    );
+
+    this.dryService?.updateCharacteristic(
+      this.platform.Characteristic.On,
+      status.oper?.AC_MODE === 'DRY',
+    );
+    this.fanModeService?.updateCharacteristic(
+      this.platform.Characteristic.On,
+      status.oper?.AC_MODE === 'FAN',
+    );
   }
 }
