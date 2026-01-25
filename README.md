@@ -16,7 +16,7 @@ If you like this plugin or want to contribute to future development, a donation 
 
 ## [Homebridge](https://github.com/nfarina/homebridge) plugin to control Electra Smart Air Conditioners.
 
-<img src="https://www.electra-air.co.il/wp-content/uploads/2021/03/electra-logo.png" width="220px"> &nbsp;
+<img src="branding/icon.png" width="150px"> &nbsp;
 <img src="https://raw.githubusercontent.com/homebridge/branding/master/logos/homebridge-color-round.png" width="150px">
 
 <SPAN ALIGN="Left">
