@@ -38,14 +38,6 @@ export class ElectraSmartPlatform implements DynamicPlatformPlugin {
       this.log.debug('Executed didFinishLaunching callback');
 
       this.initializeAndDiscover();
-      const success = await this.initializeElectraSmartClient();
-      if (success) {
-        await this.discoverDevices();
-      } else {
-        this.log.error(
-          'Discovery aborted due to client initialization failure.',
-        );
-      }
     });
   }
 
