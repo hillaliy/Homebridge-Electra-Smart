@@ -21,6 +21,7 @@ export class ElectraSmartPlatform implements DynamicPlatformPlugin {
   public readonly discoveredCacheUUIDs: string[] = [];
 
   public client: Client | null = null;
+  private sidRefreshInterval: NodeJS.Timeout | null = null;
 
   constructor(
     public readonly log: Logging,
@@ -38,6 +39,9 @@ export class ElectraSmartPlatform implements DynamicPlatformPlugin {
       this.log.debug('Executed didFinishLaunching callback');
 
       this.initializeAndDiscover();
+
+      // Start SID refresh interval (every 30 minutes)
+      this.startSidRefreshInterval();
     });
   }
 
@@ -60,7 +64,7 @@ export class ElectraSmartPlatform implements DynamicPlatformPlugin {
   }
 
   // Initializes the Electra Smart Client with provided credentials
-  private async initializeElectraSmartClient(): Promise<boolean> {
+  public async initializeElectraSmartClient(): Promise<boolean> {
     try {
       const { imei, token } = this.config;
 
@@ -78,6 +82,24 @@ export class ElectraSmartPlatform implements DynamicPlatformPlugin {
       this.log.error('Failed to initialize Electra Smart Client:', error);
       return false;
     }
+  }
+
+  // Start periodic SID refresh to prevent session expiration
+  private startSidRefreshInterval() {
+    // Refresh SID every 30 minutes
+    const refreshInterval = 30 * 60 * 1000;
+
+    this.sidRefreshInterval = setInterval(async () => {
+      try {
+        if (this.client) {
+          // Reinitialize client to get a fresh SID
+          await this.initializeElectraSmartClient();
+          this.log.debug('SID refreshed successfully');
+        }
+      } catch (error) {
+        this.log.error('Failed to refresh SID:', error);
+      }
+    }, refreshInterval);
   }
 
   // Main discovery logic

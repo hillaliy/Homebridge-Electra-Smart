@@ -206,7 +206,19 @@ export class ElectraPlatformAccessory {
         this.accessory.context.device.id,
       );
       return { oper: telemetry?.OPER, diag: telemetry?.DIAG_L2 };
-    } catch (error) {
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+
+      // Check if it's a SID expiration error (status code 1)
+      if (errorMessage.includes('Invalid status code returned from API (1)')) {
+        this.platform.log.warn(
+          'Session expired, attempting to reinitialize client...',
+        );
+        // Reinitialize the client to get a fresh SID
+        await this.platform.initializeElectraSmartClient();
+      }
+
       this.platform.log.error('Failed to fetch telemetry:', error);
       return null;
     }
