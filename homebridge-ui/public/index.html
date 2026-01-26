@@ -49,6 +49,7 @@
 <script>
   (async () => {
     const hb = window.homebridge;
+    let generatedImei = null; // Store the IMEI from OTP request
 
     // Initial State Check
     const config = await hb.getPluginConfig();
@@ -63,7 +64,8 @@
       if (!phone) return hb.toast.error('Phone number required');
       hb.showSpinner();
       try {
-        await hb.request('/request-otp', { phone });
+        const response = await hb.request('/request-otp', { phone });
+        generatedImei = response.imei; // Store the IMEI for later
         document.getElementById('step-1').style.display = 'none';
         document.getElementById('step-2').style.display = 'block';
         hb.toast.success('SMS Sent');
@@ -79,7 +81,11 @@
       const phone = document.getElementById('phone-input').value;
       hb.showSpinner();
       try {
-        const res = await hb.request('/verify-otp', { phone, otp });
+        const res = await hb.request('/verify-otp', {
+          phone,
+          otp,
+          imei: generatedImei,
+        });
         const config = await hb.getPluginConfig();
         const current = config[0] || { platform: 'ElectraSmartPlatform' };
         current.imei = res.imei;

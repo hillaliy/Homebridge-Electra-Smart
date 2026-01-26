@@ -100,6 +100,7 @@ export class ElectraPlatformAccessory {
       }
     }
 
+    // Link Services to Main Service
     if (this.dryService) {
       this.service.addLinkedService(this.dryService);
     }
@@ -107,7 +108,7 @@ export class ElectraPlatformAccessory {
       this.service.addLinkedService(this.fanModeService);
     }
 
-    // --- Characteristic Bindings (Using Cache for all GETs) ---
+    // Characteristic Bindings (Using Cache for all GETs)
 
     // Active State
     this.service
@@ -140,6 +141,7 @@ export class ElectraPlatformAccessory {
         this.platform.Characteristic.CoolingThresholdTemperature,
       )
       .setProps({ minStep: 1, minValue: 16, maxValue: 30 })
+      .updateValue(24)
       .onSet(this.setTargetTemperature.bind(this))
       .onGet(() => {
         const temp = this.lastStatus?.oper?.SPT;
@@ -152,6 +154,7 @@ export class ElectraPlatformAccessory {
         this.platform.Characteristic.HeatingThresholdTemperature,
       )
       .setProps({ minStep: 1, minValue: 16, maxValue: 30 })
+      .updateValue(24)
       .onSet(this.setTargetTemperature.bind(this))
       .onGet(() => {
         const temp = this.lastStatus?.oper?.SPT;
@@ -209,7 +212,7 @@ export class ElectraPlatformAccessory {
     }
   }
 
-  // --- Logic Helpers (Using lastStatus cache) ---
+  // Logic Helpers (Using lastStatus cache)
   private getCurrentState(): CharacteristicValue {
     const mode = this.lastStatus?.oper?.AC_MODE;
     if (mode === 'COOL') {
@@ -246,7 +249,7 @@ export class ElectraPlatformAccessory {
     return 0;
   }
 
-  // --- SET Handlers ---
+  // SET Handlers
   async setActive(value: CharacteristicValue) {
     const mode = value === 1 ? 'COOL' : 'STBY';
     await this.platform.client?.setMode(this.accessory.context.device.id, mode);
@@ -294,7 +297,7 @@ export class ElectraPlatformAccessory {
     setTimeout(() => this.pollDeviceStatus(), 2000);
   }
 
-  // --- POLLING: Update status and Push to HomeKit ---
+  // POLLING: Update status and Push to HomeKit
   async pollDeviceStatus() {
     const status = await this.getDeviceStatusFromCloud();
     if (!status) {

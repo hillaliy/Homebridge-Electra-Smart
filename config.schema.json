@@ -1,56 +1,93 @@
 {
   "pluginAlias": "ElectraSmartPlatform",
   "pluginType": "platform",
-  "customUi": true,
   "singular": true,
-  "headerDisplay": "Manage your Electra Smart AC units in HomeKit.",
-  "strictValidation": false,
+  "customUi": true,
+  "headerDisplay": "Electra Smart AC Control (V2)",
+  "footerDisplay": "For support, visit the GitHub repository.",
   "schema": {
     "type": "object",
     "properties": {
+      "name": {
+        "title": "Platform Name",
+        "type": "string",
+        "default": "Electra Smart AC",
+        "required": true
+      },
       "imei": {
         "title": "IMEI",
-        "type": "string"
+        "type": "string",
+        "description": "Your device IMEI (obtained via Login)",
+        "required": true
       },
       "token": {
-        "title": "Access Token",
-        "type": "string"
+        "title": "Token",
+        "type": "string",
+        "description": "Your authentication token (obtained via Login)",
+        "required": true
       },
       "options": {
-        "title": "Additional Options",
         "type": "object",
         "properties": {
-          "hideDryMode": {
-            "title": "Hide Dry Mode Switch",
-            "type": "boolean",
-            "default": true,
-            "description": "Removes the separate Dry Mode switch from the Home app."
-          },
-          "hideFanMode": {
-            "title": "Hide Fan Mode Switch",
-            "type": "boolean",
-            "default": true,
-            "description": "Removes the separate Fan Mode switch from the Home app."
-          },
           "pollInterval": {
-            "title": "Polling Interval (Seconds)",
+            "title": "Polling Interval (seconds)",
             "type": "integer",
             "default": 60,
-            "minimum": 30,
-            "description": "How often to check for status changes (recommended 60-90s)."
+            "minimum": 30
+          },
+          "hideDryMode": {
+            "title": "Hide Dry Mode",
+            "type": "boolean",
+            "default": true
+          },
+          "hideFanMode": {
+            "title": "Hide Fan Mode",
+            "type": "boolean",
+            "default": true
           }
         }
       }
     }
   },
   "layout": [
-    "phoneNumber",
     {
-      "type": "help",
-      "helpvalue": "<button id='otp-btn' class='btn btn-primary'>Request SMS Code</button>"
+      "key": "name",
+      "readonly": true
     },
-    "imei",
-    "token",
-    "options"
+    {
+      "type": "fieldset",
+      "title": "Authentication",
+      "expandable": false,
+      "items": [
+        {
+          "key": "imei",
+          "readonly": false
+        },
+        {
+          "key": "token",
+          "readonly": false
+        },
+        {
+          "type": "help",
+          "helpValue": "Use the login button below to automatically fetch your IMEI and Token."
+        }
+      ]
+    },
+    {
+      "type": "fieldset",
+      "title": "Options",
+      "expandable": true,
+      "items": [
+        {
+          "key": "options.pollInterval"
+        },
+        {
+          "key": "options.hideDryMode"
+        },
+        {
+          "key": "options.hideFanMode"
+        }
+      ]
+    }
   ]
 }

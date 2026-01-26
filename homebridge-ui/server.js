@@ -1,83 +1,51 @@
-import {
-  HomebridgePluginUiServer,
-  RequestError,
-} from '@homebridge/plugin-ui-utils';
-import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-// 1. Get the actual directory of THIS file (homebridge-ui folder)
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
-// 2. Create a require function that looks at your plugin's root
-// We go up one level from 'homebridge-ui' to find 'node_modules'
-const require = createRequire(import.meta.url);
+import { HomebridgePluginUiServer } from '@homebridge/plugin-ui-utils';
+import { Client } from 'electra-smart-js-client';
 
 class UiServer extends HomebridgePluginUiServer {
   constructor() {
     super();
 
-    this.client = null;
-
-    try {
-      // Try to resolve the client class
-      const electra = require('electra-smart-js-client');
-      const ElectraClass = electra.ElectraSmartClient || electra;
-      this.client = new ElectraClass();
-    } catch (error) {
-      // If that fails, try an absolute path from the plugin root
-      try {
-        const rootPath = join(
-          __dirname,
-          '..',
-          'node_modules',
-          'electra-smart-js-client',
-        );
-        const electra = require(rootPath);
-        const ElectraClass = electra.ElectraSmartClient || electra;
-        this.client = new ElectraClass();
-      } catch (error) {
-        this.client = null;
+    this.onRequest('/request-otp', async payload => {
+      if (!payload || !payload.phone) {
+        return { success: false, message: 'Phone number missing in request' };
       }
-    }
 
-    this.imei = this.generateIMEI();
-    this.onRequest('/request-otp', this.handleRequestOtp.bind(this));
-    this.onRequest('/verify-otp', this.handleVerifyOtp.bind(this));
+      try {
+        const phoneNumber = String(payload.phone).trim();
+
+        // Use the static method to send OTP
+        const imei = await Client.sendOTPRequest(phoneNumber);
+
+        return { success: true, imei };
+      } catch (error) {
+        return { success: false, message: error.message };
+      }
+    });
+
+    this.onRequest('/verify-otp', async payload => {
+      try {
+        const phoneNumber = String(payload.phone).trim();
+        const otp = String(payload.otp).trim();
+
+        // Use the static method to verify OTP and get token
+        const res = await Client.getOTPToken({
+          imei: payload.imei,
+          phone: phoneNumber,
+          otp,
+        });
+
+        return {
+          success: true,
+          token: res.token,
+          imei: res.imei,
+        };
+      } catch (e) {
+        throw new Error(e.message || 'Verification failed.');
+      }
+    });
+
     this.ready();
-  }
-
-  async handleRequestOtp({ phone }) {
-    if (!this.client) {
-      throw new RequestError(
-        'Library resolution failed. Please ensure "electra-smart-js-client" is in your package.json dependencies.',
-      );
-    }
-    try {
-      await this.client.requestOtp(phone, this.imei);
-      return { success: true };
-    } catch (error) {
-      throw new RequestError(`Electra API Error: ${error.message}`);
-    }
-  }
-
-  async handleVerifyOtp({ phone, otp }) {
-    try {
-      const res = await this.client.verifyOtp(phone, otp, this.imei);
-      return { imei: this.imei, token: res.token };
-    } catch (error) {
-      throw new RequestError(error.message || 'Invalid code');
-    }
-  }
-
-  generateIMEI() {
-    return (
-      '2b95' +
-      Math.floor(10000000000 + Math.random() * 90000000000)
-        .toString()
-        .substring(0, 11)
-    );
   }
 }
 
-new UiServer();
+(() => new UiServer())();
