@@ -2,10 +2,14 @@
   "name": "homebridge-electra-smart-v2",
   "displayName": "Electra Smart A/C",
   "type": "module",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "private": false,
   "description": "Homebridge plugin for Electra Smart A/C units",
   "author": "Yossi Hillali",
+  "funding": {
+    "type": "paypal",
+    "url": "https://www.paypal.me/hillaliy"
+  },
   "license": "Apache-2.0",
   "homepage": "https://github.com/hillaliy/Homebridge-Electra-Smart",
   "repository": {
@@ -20,13 +24,19 @@
     "homebridge-electra-smart",
     "homebridge-electra",
     "electra",
-    "electra-smart"
+    "electra-smart",
+    "Electra Smart A/C"
   ],
   "main": "dist/index.js",
+  "homebridgeConfigPlugin": {
+    "main": "homebridge-ui/server.js",
+    "ui": "homebridge-ui/index.html"
+  },
   "files": [
     "dist",
     "homebridge-ui",
-    "config.schema.json"
+    "config.schema.json",
+    "branding"
   ],
   "engines": {
     "node": "^20.18.0 || ^22.10.0 || ^24.0.0",
