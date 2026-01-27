@@ -1,5 +1,5 @@
 import { HomebridgePluginUiServer } from '@homebridge/plugin-ui-utils';
-import { Client } from 'electra-smart-js-client';
+import { Client } from '@yosnightfly/electra-smart-js-client';
 
 class UiServer extends HomebridgePluginUiServer {
   constructor() {

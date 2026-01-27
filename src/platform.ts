@@ -11,7 +11,7 @@ import type {
 import { ElectraPlatformAccessory } from './platformAccessory.js';
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings.js';
 
-import { Client } from 'electra-smart-js-client';
+import { Client } from '@yosnightfly/electra-smart-js-client';
 
 export class ElectraSmartPlatform implements DynamicPlatformPlugin {
   public readonly Service: typeof Service;

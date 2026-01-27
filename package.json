@@ -2,7 +2,7 @@
   "name": "homebridge-electra-smart-v2",
   "displayName": "Electra Smart A/C",
   "type": "module",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "private": false,
   "description": "Homebridge plugin for Electra Smart A/C units",
   "author": "Yossi Hillali",
@@ -50,7 +50,7 @@
   },
   "dependencies": {
     "@homebridge/plugin-ui-utils": "^2.1.2",
-    "electra-smart-js-client": "^1.0.1",
+    "@yosnightfly/electra-smart-js-client": "^1.0.0",
     "homebridge-lib": "^7.1.12"
   },
   "devDependencies": {
