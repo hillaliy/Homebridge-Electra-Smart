@@ -7,7 +7,6 @@ interface ElectraStatus {
     SPT?: string;
     FANSPD?: string;
     CLEAR_FILT?: string;
-    V_SWING?: string;
   };
   diag?: {
     I_RAT?: string | number;
@@ -212,11 +211,13 @@ export class ElectraPlatformAccessory {
 
       // Check if it's a SID expiration error (status code 1)
       if (errorMessage.includes('Invalid status code returned from API (1)')) {
-        this.platform.log.warn(
-          'Session expired, attempting to reinitialize client...',
+        this.platform.log.debug(
+          `[${this.accessory.displayName}] Session expired, reinitializing client...`,
         );
         // Reinitialize the client to get a fresh SID
         await this.platform.initializeElectraSmartClient();
+        // Don't log the error again since it was a session expiration issue
+        return null;
       }
 
       this.platform.log.error('Failed to fetch telemetry:', error);
@@ -265,7 +266,9 @@ export class ElectraPlatformAccessory {
   async setActive(value: CharacteristicValue) {
     const mode = value === 1 ? 'COOL' : 'STBY';
     await this.platform.client?.setMode(this.accessory.context.device.id, mode);
-    this.platform.log.info(`AC Active set to: ${mode}`);
+    this.platform.log.info(
+      `[${this.accessory.displayName}] AC Active set to: ${mode}`,
+    );
     setTimeout(() => this.pollDeviceStatus(), 2000);
   }
 
@@ -274,7 +277,9 @@ export class ElectraPlatformAccessory {
       this.accessory.context.device.id,
       value as number,
     );
-    this.platform.log.info(`Target temperature set to: ${value}`);
+    this.platform.log.info(
+      `[${this.accessory.displayName}] Target temperature set to: ${value}`,
+    );
   }
 
   async setTargetState(value: CharacteristicValue) {
@@ -288,10 +293,10 @@ export class ElectraPlatformAccessory {
     };
 
     const mode = modes[value as number] || 'AUTO';
-
-    this.platform.log.info(`Target state set to: ${mode}`);
-
     await this.platform.client?.setMode(this.accessory.context.device.id, mode);
+    this.platform.log.info(
+      `[${this.accessory.displayName}] Target state set to: ${mode}`,
+    );
   }
 
   async setRotationSpeed(value: CharacteristicValue) {
@@ -302,10 +307,16 @@ export class ElectraPlatformAccessory {
       this.accessory.context.device.id,
       electraSpeed,
     );
+    this.platform.log.info(
+      `[${this.accessory.displayName}] Fan speed set to: ${electraSpeed}`,
+    );
   }
 
   async setCustomMode(mode: 'DRY' | 'FAN') {
     await this.platform.client?.setMode(this.accessory.context.device.id, mode);
+    this.platform.log.info(
+      `[${this.accessory.displayName}] Custom mode set to: ${mode}`,
+    );
     setTimeout(() => this.pollDeviceStatus(), 2000);
   }
 
