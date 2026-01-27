@@ -19,6 +19,9 @@ export class ElectraPlatformAccessory {
   private fanModeService?: Service;
   // Cache to store the last status and avoid "Slow to respond" warnings
   private lastStatus: ElectraStatus | null = null;
+  // Track the last telemetry error to avoid spamming logs
+  private lastTelemetryErrorMessage?: string;
+  private lastTelemetryErrorCount = 0;
 
   constructor(
     private readonly platform: ElectraSmartPlatform,
@@ -220,7 +223,27 @@ export class ElectraPlatformAccessory {
         return null;
       }
 
-      this.platform.log.error('Failed to fetch telemetry:', error);
+      // Dedupe and shorten error logging to avoid spamming logs with full objects
+      if (this.lastTelemetryErrorMessage === errorMessage) {
+        this.lastTelemetryErrorCount += 1;
+        // Log only every 10 occurrences to keep logs readable
+        if (this.lastTelemetryErrorCount % 10 === 1) {
+          this.platform.log.warn(
+            `[${this.accessory.displayName}] Telemetry fetch failed: ${errorMessage} (repeated ${this.lastTelemetryErrorCount} times)`,
+          );
+        } else {
+          this.platform.log.debug(
+            `[${this.accessory.displayName}] Telemetry fetch failed (suppressed): ${errorMessage}`,
+          );
+        }
+      } else {
+        this.lastTelemetryErrorMessage = errorMessage;
+        this.lastTelemetryErrorCount = 1;
+        this.platform.log.warn(
+          `[${this.accessory.displayName}] Failed to fetch telemetry: ${errorMessage}`,
+        );
+      }
+
       return null;
     }
   }
@@ -264,11 +287,38 @@ export class ElectraPlatformAccessory {
 
   // SET Handlers
   async setActive(value: CharacteristicValue) {
-    const mode = value === 1 ? 'COOL' : 'STBY';
-    await this.platform.client?.setMode(this.accessory.context.device.id, mode);
-    this.platform.log.info(
-      `[${this.accessory.displayName}] AC Active set to: ${mode}`,
-    );
+    if (value === 1) {
+      // Turning on: respect the current Target state if available (HEAT/COOL/AUTO)
+      const targetChar = this.service.getCharacteristic(
+        this.platform.Characteristic.TargetHeaterCoolerState,
+      );
+      const targetValue = targetChar?.value as number | undefined;
+      const mode =
+        targetValue ===
+        this.platform.Characteristic.TargetHeaterCoolerState.HEAT
+          ? 'HEAT'
+          : targetValue ===
+              this.platform.Characteristic.TargetHeaterCoolerState.COOL
+            ? 'COOL'
+            : 'AUTO';
+
+      await this.platform.client?.setMode(
+        this.accessory.context.device.id,
+        mode,
+      );
+      this.platform.log.info(
+        `[${this.accessory.displayName}] AC Active set to: ${mode}`,
+      );
+    } else {
+      await this.platform.client?.setMode(
+        this.accessory.context.device.id,
+        'STBY',
+      );
+      this.platform.log.info(
+        `[${this.accessory.displayName}] AC Active set to: STBY`,
+      );
+    }
+
     setTimeout(() => this.pollDeviceStatus(), 2000);
   }
 
