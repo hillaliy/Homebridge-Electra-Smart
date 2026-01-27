@@ -288,19 +288,25 @@ export class ElectraPlatformAccessory {
   // SET Handlers
   async setActive(value: CharacteristicValue) {
     if (value === 1) {
-      // Turning on: respect the current Target state if available (HEAT/COOL/AUTO)
-      const targetChar = this.service.getCharacteristic(
-        this.platform.Characteristic.TargetHeaterCoolerState,
-      );
-      const targetValue = targetChar?.value as number | undefined;
-      const mode =
-        targetValue ===
+      // Turning on: respect the current target mode from cached status
+      const currentTargetState = this.getTargetState();
+      let mode: 'COOL' | 'HEAT' | 'AUTO' = 'AUTO';
+
+      if (
+        currentTargetState ===
         this.platform.Characteristic.TargetHeaterCoolerState.HEAT
-          ? 'HEAT'
-          : targetValue ===
-              this.platform.Characteristic.TargetHeaterCoolerState.COOL
-            ? 'COOL'
-            : 'AUTO';
+      ) {
+        mode = 'HEAT';
+      } else if (
+        currentTargetState ===
+        this.platform.Characteristic.TargetHeaterCoolerState.COOL
+      ) {
+        mode = 'COOL';
+      }
+
+      this.platform.log.debug(
+        `[${this.accessory.displayName}] Turning on AC: current target state is ${currentTargetState}, will use mode: ${mode}`,
+      );
 
       await this.platform.client?.setMode(
         this.accessory.context.device.id,
