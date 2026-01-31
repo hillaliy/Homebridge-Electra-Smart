@@ -61,6 +61,10 @@ You can use the plugin settings or add this to the platforms array in your confi
 }
 ```
 
+> **Note:** `pollInterval`, `hideDryMode`, and `hideFanMode` are default values
+>
+> **⚠️ Important:** `pollInterval` minimum is 30 seconds due to Electra API limits
+
 ## 🌬️ 🌀 Custom Modes
 
 This plugin supports adding custom services for Dry mode and Fan mode to HomeKit.
