@@ -49,14 +49,14 @@ You can use the plugin settings or add this to the platforms array in your confi
 
 ```json
 {
-  "platform": "ElectraSmartPlatform",
   "name": "Electra Smart AC",
-  "imei": "YOUR_IMEI_NUMBER",
-  "token": "YOUR_AUTH_TOKEN",
   "options": {
+    "imei": "YOUR_IMEI_NUMBER",
+    "token": "YOUR_AUTH_TOKEN",
     "pollInterval": 60,
-    "hideDryMode": false,
-    "hideFanMode": false
-  }
+    "hideDryMode": true,
+    "hideFanMode": true
+  },
+  "platform": "ElectraSmartPlatform"
 }
 ```
