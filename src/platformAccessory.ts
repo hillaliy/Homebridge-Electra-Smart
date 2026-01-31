@@ -19,6 +19,7 @@ export class ElectraPlatformAccessory {
   private fanModeService?: Service;
   // Cache to store the last status and avoid "Slow to respond" warnings
   private lastStatus: ElectraStatus | null = null;
+  private requestedTargetMode: 'COOL' | 'HEAT' | 'AUTO' | null = null;
   // Track the last telemetry error to avoid spamming logs
   private lastTelemetryErrorMessage?: string;
   private lastTelemetryErrorCount = 0;
@@ -288,30 +289,23 @@ export class ElectraPlatformAccessory {
   // SET Handlers
   async setActive(value: CharacteristicValue) {
     if (value === 1) {
-      // Turning on: respect the current target mode from cached status
-      const currentTargetState = this.getTargetState();
-      let mode: 'COOL' | 'HEAT' | 'AUTO' = 'AUTO';
-
-      if (
-        currentTargetState ===
-        this.platform.Characteristic.TargetHeaterCoolerState.HEAT
-      ) {
-        mode = 'HEAT';
-      } else if (
-        currentTargetState ===
-        this.platform.Characteristic.TargetHeaterCoolerState.COOL
-      ) {
-        mode = 'COOL';
-      }
+      const mode: 'COOL' | 'HEAT' | 'AUTO' =
+        this.requestedTargetMode ??
+        (this.lastStatus?.oper?.AC_MODE === 'COOL' ||
+        this.lastStatus?.oper?.AC_MODE === 'HEAT' ||
+        this.lastStatus?.oper?.AC_MODE === 'AUTO'
+          ? this.lastStatus.oper.AC_MODE
+          : 'AUTO');
 
       this.platform.log.debug(
-        `[${this.accessory.displayName}] Turning on AC: current target state is ${currentTargetState}, will use mode: ${mode}`,
+        `[${this.accessory.displayName}] Turning ON AC using requested mode: ${mode}`,
       );
 
       await this.platform.client?.setMode(
         this.accessory.context.device.id,
         mode,
       );
+
       this.platform.log.info(
         `[${this.accessory.displayName}] AC Active set to: ${mode}`,
       );
@@ -320,6 +314,7 @@ export class ElectraPlatformAccessory {
         this.accessory.context.device.id,
         'STBY',
       );
+
       this.platform.log.info(
         `[${this.accessory.displayName}] AC Active set to: STBY`,
       );
@@ -339,20 +334,28 @@ export class ElectraPlatformAccessory {
   }
 
   async setTargetState(value: CharacteristicValue) {
-    const modes: Record<
-      number,
-      'COOL' | 'HEAT' | 'AUTO' | 'DRY' | 'FAN' | 'STBY'
-    > = {
+    const modes: Record<number, 'COOL' | 'HEAT' | 'AUTO'> = {
       [this.platform.Characteristic.TargetHeaterCoolerState.COOL]: 'COOL',
       [this.platform.Characteristic.TargetHeaterCoolerState.HEAT]: 'HEAT',
       [this.platform.Characteristic.TargetHeaterCoolerState.AUTO]: 'AUTO',
     };
 
-    const mode = modes[value as number] || 'AUTO';
-    await this.platform.client?.setMode(this.accessory.context.device.id, mode);
-    this.platform.log.info(
-      `[${this.accessory.displayName}] Target state set to: ${mode}`,
+    const mode = modes[value as number] ?? 'AUTO';
+
+    this.requestedTargetMode = mode;
+
+    this.platform.log.debug(
+      `[${this.accessory.displayName}] HomeKit requested target mode: ${mode}`,
     );
+    if (this.lastStatus?.oper?.AC_MODE !== 'STBY') {
+      await this.platform.client?.setMode(
+        this.accessory.context.device.id,
+        mode,
+      );
+      this.platform.log.info(
+        `[${this.accessory.displayName}] Target state set to: ${mode}`,
+      );
+    }
   }
 
   async setRotationSpeed(value: CharacteristicValue) {
