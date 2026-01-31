@@ -29,8 +29,8 @@ If you like this plugin or want to contribute to future development, a donation 
 ## � Authentication Setup
 
 <p ALIGN="CENTER">
-<img src="branding/Connect Electra Smart.png" width="300px"> &nbsp;
-<img src="branding/Verify SMS Code.png" width="300px">
+<img src="branding/Connect Electra Smart.png" width="600px"><br>;
+<img src="branding/Verify SMS Code.png" width="600px">
 </p>
 
 The plugin provides a simple two-step authentication flow:
