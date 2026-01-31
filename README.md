@@ -32,10 +32,22 @@ If you like this plugin or want to contribute to future development, a donation 
 - **Unified Polling:** Fetches all device data in a single request every 60 seconds (configurable) to avoid Electra API rate limits.
 - **Native Filter Support:** Integrated filter dirty indication and reset functionality within the AC settings.
 
+## � Authentication Setup
+
+<p ALIGN="CENTER">
+<img src="branding/Connect Electra Smart.png" width="300px"> &nbsp;
+<img src="branding/Verify SMS Code.png" width="300px">
+</p>
+
+The plugin provides a simple two-step authentication flow:
+
+1. **Get SMS Code** - Enter your phone number to receive a one-time login code
+2. **Verify SMS Code** - Enter the 4-digit code sent to your phone to complete authentication
+
 ## 🛰️ Supported Devices
 
 - This plugin supports Electra Smart AC units connected via the Electra Smart Cloud.
-- Requires a valid **IMEI** and **Token** (extracted from the Electra app).
+- Requires a valid **IMEI** and **Token** (extracted via the authentication setup above).
 
 ## ⚙️ Configuration
 
