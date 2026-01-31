@@ -61,11 +61,11 @@
       "items": [
         {
           "key": "imei",
-          "readonly": false
+          "readonly": true
         },
         {
           "key": "token",
-          "readonly": false
+          "readonly": true
         },
         {
           "type": "help",
