@@ -30,7 +30,7 @@ If you like this plugin or want to contribute to future development, a donation 
 
 <p ALIGN="CENTER">
 <img src="branding/Connect Electra Smart.png" width="600px"><br>
-<img src="branding/Verify SMS Code.png" width="600px">
+<img src="branding/Verify OTP Code.png" width="600px">
 </p>
 
 The plugin provides a simple two-step authentication flow:
@@ -50,9 +50,9 @@ You can use the plugin settings or add this to the platforms array in your confi
 ```json
 {
   "name": "Electra Smart AC",
+  "imei": "YOUR_IMEI_NUMBER",
+  "token": "YOUR_AUTH_TOKEN",
   "options": {
-    "imei": "YOUR_IMEI_NUMBER",
-    "token": "YOUR_AUTH_TOKEN",
     "pollInterval": 60,
     "hideDryMode": true,
     "hideFanMode": true

@@ -13,13 +13,13 @@
         class="form-control"
       />
     </div>
-    <button id="send-otp-btn" class="btn btn-primary btn-block mt-3">
-      Send SMS Code
+    <button id="get-otp-btn" class="btn btn-primary btn-block mt-3">
+      Get OTP Code
     </button>
   </div>
 
   <div id="step-2" style="display: none">
-    <h4 class="mb-3">Verify SMS Code</h4>
+    <h4 class="mb-3">Verify OTP Code</h4>
     <p class="text-muted small">Enter the 4-digit code sent to your phone.</p>
     <div class="form-group">
       <label for="otp-input">Verification Code</label>
@@ -43,6 +43,9 @@
     <i class="fa fa-check-circle fa-3x text-success mb-3"></i>
     <h5>Account Linked!</h5>
     <p class="text-muted">Restart Homebridge to apply changes.</p>
+    <button id="unlink-btn" class="btn btn-danger btn-block mt-3">
+      Unlink Account
+    </button>
   </div>
 </div>
 
@@ -59,7 +62,7 @@
       hb.showSchemaForm();
     }
 
-    document.getElementById('send-otp-btn').onclick = async () => {
+    document.getElementById('get-otp-btn').onclick = async () => {
       const phone = document.getElementById('phone-input').value;
       if (!phone) return hb.toast.error('Phone number required');
       hb.showSpinner();
@@ -102,6 +105,20 @@
       } finally {
         hb.hideSpinner();
       }
+    };
+
+    document.getElementById('unlink-btn').onclick = async () => {
+      const config = await hb.getPluginConfig();
+      const current = config[0] || { platform: 'ElectraSmartPlatform' };
+      delete current.imei;
+      delete current.token;
+      await hb.updatePluginConfig([current]);
+      await hb.savePluginConfig();
+
+      document.getElementById('setup-complete').style.display = 'none';
+      document.getElementById('step-1').style.display = 'block';
+      hb.hideSchemaForm();
+      hb.toast.success('Account Unlinked');
     };
 
     document.getElementById('back-btn').onclick = () => {
