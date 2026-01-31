@@ -29,7 +29,7 @@ If you like this plugin or want to contribute to future development, a donation 
 ## � Authentication Setup
 
 <p ALIGN="CENTER">
-<img src="branding/Connect Electra Smart.png" width="600px"><br>;
+<img src="branding/Connect Electra Smart.png" width="600px"><br>
 <img src="branding/Verify SMS Code.png" width="600px">
 </p>
 
@@ -60,3 +60,12 @@ You can use the plugin settings or add this to the platforms array in your confi
   "platform": "ElectraSmartPlatform"
 }
 ```
+
+## 🌬️ 🌀 Custom Modes
+
+This plugin supports adding custom services for Dry mode and Fan mode to HomeKit.
+
+### Configuration Options
+
+- **`hideDryMode`** - Set to `true` to hide the Dry mode option from HomeKit
+- **`hideFanMode`** - Set to `true` to hide the Fan mode option from HomeKit
