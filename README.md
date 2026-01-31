@@ -26,12 +26,6 @@ If you like this plugin or want to contribute to future development, a donation 
 <img src="https://img.shields.io/badge/homebridge-%3E%3D1.11.0-brightgreen"> &nbsp;
 <img src="https://img.shields.io/badge/homebridge_2.0-supported-purple">
 
-## 🚀 Key Improvements in V2
-
-- **Zero Lag:** Implements background state caching to eliminate the "Slow to Respond" status in the Home app.
-- **Unified Polling:** Fetches all device data in a single request every 60 seconds (configurable) to avoid Electra API rate limits.
-- **Native Filter Support:** Integrated filter dirty indication and reset functionality within the AC settings.
-
 ## � Authentication Setup
 
 <p ALIGN="CENTER">
