@@ -8,8 +8,7 @@
 
 [![Downloads](https://img.shields.io/npm/dt/homebridge-electra-smart-v2.svg?color=critical)](https://www.npmjs.com/package/homebridge-electra-smart-v2)
 [![Version](https://img.shields.io/npm/v/homebridge-electra-smart-v2)](https://www.npmjs.com/package/homebridge-electra-smart-v2)
-
-<!-- [![verified-by-homebridge](https://badgen.net/badge/homebridge/verified/purple)](https://github.com/homebridge/homebridge/wiki/Verified-Plugins)<br> -->
+[![verified-by-homebridge](https://img.shields.io/badge/homebridge-verified-blueviolet?color=%23491F59&style=for-the-badge&logoColor=%23FFFFFF&logo=homebridge)](https://github.com/homebridge/homebridge/wiki/Verified-Plugins)
 
 Programming is not easy. <br />
 If you like this plugin or want to contribute to future development, a donation will help. <br /> <a target="blank" href="https://www.paypal.me/hillaliy"><img src="https://img.shields.io/badge/PayPal-Donate-blue.svg?logo=paypal"/></a><br>
