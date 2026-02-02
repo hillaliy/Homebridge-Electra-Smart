@@ -11,20 +11,17 @@
       "name": {
         "title": "Platform Name",
         "type": "string",
-        "default": "Electra Smart AC",
-        "required": true
+        "default": "Electra Smart AC"
       },
       "imei": {
         "title": "IMEI",
         "type": "string",
-        "description": "Your device IMEI (obtained via Login)",
-        "required": true
+        "description": "Your device IMEI (obtained via Login)"
       },
       "token": {
         "title": "Token",
         "type": "string",
-        "description": "Your authentication token (obtained via Login)",
-        "required": true
+        "description": "Your authentication token (obtained via Login)"
       },
       "options": {
         "type": "object",
