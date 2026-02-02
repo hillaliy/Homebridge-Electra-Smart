@@ -7,7 +7,7 @@
 # Homebridge Electra Smart V2
 
 [![Downloads](https://img.shields.io/npm/dt/homebridge-electra-smart-v2.svg?color=critical)](https://www.npmjs.com/package/homebridge-electra-smart-v2)
-[![Version](https://img.shields.io/npm/v/homebridge-electra-smart-v2)](https://www.npmjs.com/package/homebridge-electra-smart-v2)
+[![Version](https://img.shields.io/npm/v/homebridge-electra-smart-v2)](https://www.npmjs.com/package/homebridge-electra-smart-v2)<br/>
 [![verified-by-homebridge](https://img.shields.io/badge/homebridge-verified-blueviolet?color=%23491F59&style=for-the-badge&logoColor=%23FFFFFF&logo=homebridge)](https://github.com/homebridge/homebridge/wiki/Verified-Plugins)
 
 Programming is not easy. <br />
