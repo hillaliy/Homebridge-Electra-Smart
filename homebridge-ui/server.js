@@ -40,7 +40,7 @@ class UiServer extends HomebridgePluginUiServer {
           imei: res.imei,
         };
       } catch (e) {
-        throw new Error(e.message || 'Verification failed.');
+        throw new Error(e.message || 'Verification failed.', { cause: e });
       }
     });
 
