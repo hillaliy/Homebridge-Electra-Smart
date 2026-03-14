@@ -2,7 +2,7 @@
   "name": "homebridge-electra-smart-v2",
   "displayName": "Electra Smart A/C",
   "type": "module",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "private": false,
   "description": "Homebridge plugin for Electra Smart A/C units",
   "author": "Yossi Hillali",
@@ -49,19 +49,19 @@
     "watch": "npm run build && npm link && nodemon"
   },
   "dependencies": {
-    "@homebridge/plugin-ui-utils": "^2.1.2",
-    "@yosnightfly/electra-smart-js-client": "^1.0.2",
-    "homebridge-lib": "^7.1.12"
+    "@homebridge/plugin-ui-utils": "^2.2.1",
+    "@yosnightfly/electra-smart-js-client": "^1.0.3",
+    "homebridge-lib": "^7.3.2"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.1",
-    "@types/node": "^24.10.1",
-    "eslint": "^9.39.1",
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^25.5.0",
+    "eslint": "^10.0.3",
     "homebridge": "^2.0.0-beta.55",
-    "nodemon": "^3.1.11",
-    "rimraf": "^6.1.0",
+    "nodemon": "^3.1.14",
+    "rimraf": "^6.1.3",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.46.4"
+    "typescript-eslint": "^8.57.0"
   }
 }
