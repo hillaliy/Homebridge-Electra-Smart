@@ -1,6 +1,8 @@
 import { CharacteristicValue, PlatformAccessory, Service } from 'homebridge';
 import { ElectraSmartPlatform } from './platform.js';
 
+type ElectraHvacMode = 'COOL' | 'HEAT' | 'AUTO';
+
 interface ElectraStatus {
   oper?: {
     AC_MODE?: string;
@@ -19,7 +21,7 @@ export class ElectraPlatformAccessory {
   private fanModeService?: Service;
   // Cache to store the last status and avoid "Slow to respond" warnings
   private lastStatus: ElectraStatus | null = null;
-  private requestedTargetMode: 'COOL' | 'HEAT' | 'AUTO' | null = null;
+  private requestedTargetMode: ElectraHvacMode | null = null;
   // Track the last telemetry error to avoid spamming logs
   private lastTelemetryErrorMessage?: string;
   private lastTelemetryErrorCount = 0;
@@ -28,6 +30,14 @@ export class ElectraPlatformAccessory {
     private readonly platform: ElectraSmartPlatform,
     private readonly accessory: PlatformAccessory,
   ) {
+    const persisted = this.accessory.context.lastTargetMode;
+    if (
+      persisted === 'COOL' ||
+      persisted === 'HEAT' ||
+      persisted === 'AUTO'
+    ) {
+      this.requestedTargetMode = persisted;
+    }
     // Accessory Information
     this.accessory
       .getService(this.platform.Service.AccessoryInformation)!
@@ -262,14 +272,78 @@ export class ElectraPlatformAccessory {
   }
 
   private getTargetState(): CharacteristicValue {
-    const mode = this.lastStatus?.oper?.AC_MODE;
+    const preferred =
+      this.requestedTargetMode ??
+      this.targetModeFromOper(this.lastStatus?.oper?.AC_MODE);
+    return this.targetStateCharacteristicForMode(preferred ?? 'AUTO');
+  }
+
+  private targetModeFromOper(
+    acMode?: string,
+  ): ElectraHvacMode | null {
+    if (acMode === 'COOL' || acMode === 'HEAT' || acMode === 'AUTO') {
+      return acMode;
+    }
+    return null;
+  }
+
+  private targetStateCharacteristicForMode(
+    mode: ElectraHvacMode,
+  ): CharacteristicValue {
+    const Target = this.platform.Characteristic.TargetHeaterCoolerState;
     if (mode === 'COOL') {
-      return this.platform.Characteristic.TargetHeaterCoolerState.COOL;
+      return Target.COOL;
     }
     if (mode === 'HEAT') {
-      return this.platform.Characteristic.TargetHeaterCoolerState.HEAT;
+      return Target.HEAT;
     }
-    return this.platform.Characteristic.TargetHeaterCoolerState.AUTO;
+    return Target.AUTO;
+  }
+
+  private targetModeFromCharacteristicValue(
+    value: CharacteristicValue,
+  ): ElectraHvacMode | null {
+    const Target = this.platform.Characteristic.TargetHeaterCoolerState;
+    const modes: Record<number, ElectraHvacMode> = {
+      [Target.COOL]: 'COOL',
+      [Target.HEAT]: 'HEAT',
+      [Target.AUTO]: 'AUTO',
+    };
+    return modes[value as number] ?? null;
+  }
+
+  /** Mode to use when powering on; HomeKit may set Active before TargetHeaterCoolerState. */
+  private resolvePowerOnMode(): ElectraHvacMode {
+    if (this.requestedTargetMode) {
+      return this.requestedTargetMode;
+    }
+
+    const targetCharacteristic = this.service.getCharacteristic(
+      this.platform.Characteristic.TargetHeaterCoolerState,
+    );
+    const fromCharacteristic = this.targetModeFromCharacteristicValue(
+      targetCharacteristic.value as CharacteristicValue,
+    );
+    if (fromCharacteristic) {
+      return fromCharacteristic;
+    }
+
+    const fromLastStatus = this.targetModeFromOper(
+      this.lastStatus?.oper?.AC_MODE,
+    );
+    if (fromLastStatus) {
+      return fromLastStatus;
+    }
+
+    return 'AUTO';
+  }
+
+  private persistTargetMode(mode: ElectraHvacMode) {
+    if (this.accessory.context.lastTargetMode === mode) {
+      return;
+    }
+    this.accessory.context.lastTargetMode = mode;
+    this.platform.api.updatePlatformAccessories([this.accessory]);
   }
 
   private getRotationSpeed(): CharacteristicValue {
@@ -289,13 +363,7 @@ export class ElectraPlatformAccessory {
   // SET Handlers
   async setActive(value: CharacteristicValue) {
     if (value === 1) {
-      const mode: 'COOL' | 'HEAT' | 'AUTO' =
-        this.requestedTargetMode ??
-        (this.lastStatus?.oper?.AC_MODE === 'COOL' ||
-        this.lastStatus?.oper?.AC_MODE === 'HEAT' ||
-        this.lastStatus?.oper?.AC_MODE === 'AUTO'
-          ? this.lastStatus.oper.AC_MODE
-          : 'AUTO');
+      const mode = this.resolvePowerOnMode();
 
       this.platform.log.debug(
         `[${this.accessory.displayName}] Turning ON AC using requested mode: ${mode}`,
@@ -334,20 +402,23 @@ export class ElectraPlatformAccessory {
   }
 
   async setTargetState(value: CharacteristicValue) {
-    const modes: Record<number, 'COOL' | 'HEAT' | 'AUTO'> = {
-      [this.platform.Characteristic.TargetHeaterCoolerState.COOL]: 'COOL',
-      [this.platform.Characteristic.TargetHeaterCoolerState.HEAT]: 'HEAT',
-      [this.platform.Characteristic.TargetHeaterCoolerState.AUTO]: 'AUTO',
-    };
-
-    const mode = modes[value as number] ?? 'AUTO';
+    const mode = this.targetModeFromCharacteristicValue(value) ?? 'AUTO';
 
     this.requestedTargetMode = mode;
+    this.persistTargetMode(mode);
 
     this.platform.log.debug(
       `[${this.accessory.displayName}] HomeKit requested target mode: ${mode}`,
     );
-    if (this.lastStatus?.oper?.AC_MODE !== 'STBY') {
+
+    const isStandby = this.lastStatus?.oper?.AC_MODE === 'STBY';
+    const activeRequested =
+      (this.service.getCharacteristic(this.platform.Characteristic.Active)
+        .value as number) === 1;
+
+    // When HomeKit sets Active before TargetHeaterCoolerState, setActive may have
+    // already powered on with AUTO; apply the correct mode once target is known.
+    if (!isStandby || activeRequested) {
       await this.platform.client?.setMode(
         this.accessory.context.device.id,
         mode,
