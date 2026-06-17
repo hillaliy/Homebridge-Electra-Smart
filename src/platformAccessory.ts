@@ -3,6 +3,10 @@ import { ElectraSmartPlatform } from './platform.js';
 
 type ElectraHvacMode = 'COOL' | 'HEAT' | 'AUTO';
 
+const HOMEKIT_MIN_TARGET_TEMPERATURE = 16;
+const HOMEKIT_MAX_TARGET_TEMPERATURE = 30;
+const DEFAULT_TARGET_TEMPERATURE = 24;
+
 interface ElectraStatus {
   oper?: {
     AC_MODE?: string;
@@ -30,6 +34,7 @@ export class ElectraPlatformAccessory {
     private readonly platform: ElectraSmartPlatform,
     private readonly accessory: PlatformAccessory,
   ) {
+    const options = this.platform.config.options ?? {};
     const persisted = this.accessory.context.lastTargetMode;
     if (
       persisted === 'COOL' ||
@@ -64,7 +69,7 @@ export class ElectraPlatformAccessory {
       this.accessory.addService(this.platform.Service.HeaterCooler);
 
     // 2. DRY MODE Switch
-    if (!this.platform.config.options.hideDryMode) {
+    if (!options.hideDryMode) {
       this.dryService =
         this.accessory.getService('Dry Mode') ||
         this.accessory.addService(
@@ -89,7 +94,7 @@ export class ElectraPlatformAccessory {
     }
 
     // 3. FAN MODE Switch
-    if (!this.platform.config.options.hideFanMode) {
+    if (!options.hideFanMode) {
       this.fanModeService =
         this.accessory.getService('Fan Mode') ||
         this.accessory.addService(
@@ -127,7 +132,7 @@ export class ElectraPlatformAccessory {
     this.service
       .getCharacteristic(this.platform.Characteristic.Active)
       .onSet(this.setActive.bind(this))
-      .onGet(() => (this.lastStatus?.oper?.AC_MODE === 'STBY' ? 0 : 1));
+      .onGet(() => this.getActiveState());
 
     // Current Mode (Cooling/Heating/Idle)
     this.service
@@ -153,12 +158,15 @@ export class ElectraPlatformAccessory {
       .getCharacteristic(
         this.platform.Characteristic.CoolingThresholdTemperature,
       )
-      .setProps({ minStep: 1, minValue: 16, maxValue: 30 })
-      .updateValue(24)
+      .setProps({
+        minStep: 1,
+        minValue: HOMEKIT_MIN_TARGET_TEMPERATURE,
+        maxValue: HOMEKIT_MAX_TARGET_TEMPERATURE,
+      })
+      .updateValue(DEFAULT_TARGET_TEMPERATURE)
       .onSet(this.setTargetTemperature.bind(this))
       .onGet(() => {
-        const temp = this.lastStatus?.oper?.SPT;
-        return temp ? parseInt(temp, 10) : 24;
+        return this.getHomeKitTargetTemperature();
       });
 
     // Heating Temp Setpoint
@@ -166,12 +174,15 @@ export class ElectraPlatformAccessory {
       .getCharacteristic(
         this.platform.Characteristic.HeatingThresholdTemperature,
       )
-      .setProps({ minStep: 1, minValue: 16, maxValue: 30 })
-      .updateValue(24)
+      .setProps({
+        minStep: 1,
+        minValue: HOMEKIT_MIN_TARGET_TEMPERATURE,
+        maxValue: HOMEKIT_MAX_TARGET_TEMPERATURE,
+      })
+      .updateValue(DEFAULT_TARGET_TEMPERATURE)
       .onSet(this.setTargetTemperature.bind(this))
       .onGet(() => {
-        const temp = this.lastStatus?.oper?.SPT;
-        return temp ? parseInt(temp, 10) : 24;
+        return this.getHomeKitTargetTemperature();
       });
 
     // Fan Speed
@@ -204,8 +215,7 @@ export class ElectraPlatformAccessory {
       });
 
     // Start Polling
-    const pollInterval =
-      ((this.platform.config.options.pollInterval as number) || 60) * 1000;
+    const pollInterval = ((options.pollInterval as number) || 60) * 1000;
     setInterval(() => this.pollDeviceStatus(), pollInterval);
 
     // Initial fetch to fill the cache
@@ -260,6 +270,11 @@ export class ElectraPlatformAccessory {
   }
 
   // Logic Helpers (Using lastStatus cache)
+  private getActiveState(): CharacteristicValue {
+    const mode = this.lastStatus?.oper?.AC_MODE;
+    return mode && mode !== 'STBY' ? 1 : 0;
+  }
+
   private getCurrentState(): CharacteristicValue {
     const mode = this.lastStatus?.oper?.AC_MODE;
     if (mode === 'COOL') {
@@ -360,6 +375,26 @@ export class ElectraPlatformAccessory {
     return 0;
   }
 
+  private getHomeKitTargetTemperature(): number {
+    const targetTemperature = parseInt(
+      this.lastStatus?.oper?.SPT ?? DEFAULT_TARGET_TEMPERATURE.toString(),
+      10,
+    );
+
+    if (Number.isNaN(targetTemperature)) {
+      return DEFAULT_TARGET_TEMPERATURE;
+    }
+
+    return this.clampTargetTemperature(targetTemperature);
+  }
+
+  private clampTargetTemperature(targetTemperature: number): number {
+    return Math.min(
+      HOMEKIT_MAX_TARGET_TEMPERATURE,
+      Math.max(HOMEKIT_MIN_TARGET_TEMPERATURE, targetTemperature),
+    );
+  }
+
   // SET Handlers
   async setActive(value: CharacteristicValue) {
     if (value === 1) {
@@ -392,12 +427,14 @@ export class ElectraPlatformAccessory {
   }
 
   async setTargetTemperature(value: CharacteristicValue) {
+    const targetTemperature = this.clampTargetTemperature(value as number);
+
     await this.platform.client?.setTemperature(
       this.accessory.context.device.id,
-      value as number,
+      targetTemperature,
     );
     this.platform.log.info(
-      `[${this.accessory.displayName}] Target temperature set to: ${value}`,
+      `[${this.accessory.displayName}] Target temperature set to: ${targetTemperature}`,
     );
   }
 
@@ -462,7 +499,7 @@ export class ElectraPlatformAccessory {
     // Push updates to Homebridge immediately
     this.service.updateCharacteristic(
       this.platform.Characteristic.Active,
-      status.oper?.AC_MODE === 'STBY' ? 0 : 1,
+      this.getActiveState(),
     );
     this.service.updateCharacteristic(
       this.platform.Characteristic.CurrentTemperature,
@@ -486,11 +523,11 @@ export class ElectraPlatformAccessory {
     );
     this.service.updateCharacteristic(
       this.platform.Characteristic.CoolingThresholdTemperature,
-      parseInt(status.oper?.SPT || '24', 10),
+      this.getHomeKitTargetTemperature(),
     );
     this.service.updateCharacteristic(
       this.platform.Characteristic.HeatingThresholdTemperature,
-      parseInt(status.oper?.SPT || '24', 10),
+      this.getHomeKitTargetTemperature(),
     );
 
     this.dryService?.updateCharacteristic(
