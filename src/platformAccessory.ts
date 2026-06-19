@@ -6,6 +6,9 @@ type ElectraHvacMode = 'COOL' | 'HEAT' | 'AUTO';
 const HOMEKIT_MIN_TARGET_TEMPERATURE = 16;
 const HOMEKIT_MAX_TARGET_TEMPERATURE = 30;
 const DEFAULT_TARGET_TEMPERATURE = 24;
+const HOMEKIT_MIN_CURRENT_TEMPERATURE = -270;
+const HOMEKIT_MAX_CURRENT_TEMPERATURE = 100;
+const DEFAULT_CURRENT_TEMPERATURE = 22;
 
 interface ElectraStatus {
   oper?: {
@@ -142,10 +145,7 @@ export class ElectraPlatformAccessory {
     // Current Temperature (Room)
     this.service
       .getCharacteristic(this.platform.Characteristic.CurrentTemperature)
-      .onGet(() => {
-        const temp = this.lastStatus?.diag?.I_RAT;
-        return temp ? parseFloat(temp.toString()) : 22;
-      });
+      .onGet(() => this.getCurrentTemperature());
 
     // Target Mode (Auto/Cool/Heat)
     this.service
@@ -375,6 +375,23 @@ export class ElectraPlatformAccessory {
     return 0;
   }
 
+  private getCurrentTemperature(): number {
+    const rawTemperature = Number(this.lastStatus?.diag?.I_RAT);
+    if (!Number.isFinite(rawTemperature)) {
+      return DEFAULT_CURRENT_TEMPERATURE;
+    }
+
+    const temperature =
+      rawTemperature > HOMEKIT_MAX_CURRENT_TEMPERATURE
+        ? rawTemperature / 10
+        : rawTemperature;
+
+    return temperature >= HOMEKIT_MIN_CURRENT_TEMPERATURE &&
+      temperature <= HOMEKIT_MAX_CURRENT_TEMPERATURE
+      ? temperature
+      : DEFAULT_CURRENT_TEMPERATURE;
+  }
+
   private getHomeKitTargetTemperature(): number {
     const targetTemperature = parseInt(
       this.lastStatus?.oper?.SPT ?? DEFAULT_TARGET_TEMPERATURE.toString(),
@@ -503,7 +520,7 @@ export class ElectraPlatformAccessory {
     );
     this.service.updateCharacteristic(
       this.platform.Characteristic.CurrentTemperature,
-      parseFloat(status.diag?.I_RAT?.toString() || '22'),
+      this.getCurrentTemperature(),
     );
     this.service.updateCharacteristic(
       this.platform.Characteristic.CurrentHeaterCoolerState,
