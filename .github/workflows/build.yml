@@ -9,7 +9,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: [20.x, 22.x, 24.x]
+        node-version: [22.x, 24.x]
 
     steps:
       - uses: actions/checkout@v5
@@ -28,10 +28,8 @@ jobs:
       - name: Build the project
         run: npm run build
 
-      - name: List, audit, fix outdated dependencies and build again
+      - name: Check dependency status
         run: |
-          npm list --outdated
-          npm audit || true  # ignore failures
-          npm audit fix || true
-          npm list --outdated
+          npm outdated || true
+          npm audit
           npm run build
