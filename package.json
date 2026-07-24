@@ -2,7 +2,7 @@
   "name": "homebridge-electra-smart-v2",
   "displayName": "Electra Smart A/C",
   "type": "module",
-  "version": "1.2.11",
+  "version": "1.2.12",
   "private": false,
   "description": "Homebridge plugin for Electra Smart A/C units",
   "author": "Yossi Hillali",
