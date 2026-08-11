@@ -32,6 +32,12 @@
             "default": 60,
             "minimum": 30
           },
+          "debug": {
+            "title": "Plugin Debug Mode",
+            "type": "boolean",
+            "default": false,
+            "description": "Show detailed plugin logs without enabling debug mode for all of Homebridge."
+          },
           "hideDryMode": {
             "title": "Hide Dry Mode",
             "type": "boolean",
@@ -77,6 +83,9 @@
       "items": [
         {
           "key": "options.pollInterval"
+        },
+        {
+          "key": "options.debug"
         },
         {
           "key": "options.hideDryMode"

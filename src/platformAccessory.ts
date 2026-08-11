@@ -9,10 +9,12 @@ const DEFAULT_TARGET_TEMPERATURE = 24;
 const HOMEKIT_MIN_CURRENT_TEMPERATURE = -270;
 const HOMEKIT_MAX_CURRENT_TEMPERATURE = 100;
 const DEFAULT_CURRENT_TEMPERATURE = 22;
+const UNKNOWN_POWER_TELEMETRY_OVERRIDE_MS = 5 * 60 * 1000;
 
 interface ElectraStatus {
   oper?: {
     AC_MODE?: string;
+    AC_STSRC?: string;
     SPT?: string;
     FANSPD?: string;
     CLEAR_FILT?: string;
@@ -33,6 +35,9 @@ export class ElectraPlatformAccessory {
   private lastStatus: ElectraStatus | null = null;
   private requestedActiveState: boolean | null = null;
   private requestedTargetMode: ElectraHvacMode | null = null;
+  private lastActiveCommand:
+    | { active: boolean; expiresAt: number }
+    | null = null;
   // Track the last telemetry error to avoid spamming logs
   private lastTelemetryErrorMessage?: string;
   private lastTelemetryErrorCount = 0;
@@ -239,7 +244,7 @@ export class ElectraPlatformAccessory {
 
       // Check if it's a SID expiration error (status code 1)
       if (errorMessage.includes('Invalid status code returned from API (1)')) {
-        this.platform.log.debug(
+        this.platform.debugLog(
           `[${this.accessory.displayName}] Session expired, reinitializing client...`,
         );
         // Reinitialize the client to get a fresh SID
@@ -257,7 +262,7 @@ export class ElectraPlatformAccessory {
             `[${this.accessory.displayName}] Telemetry fetch failed: ${errorMessage} (repeated ${this.lastTelemetryErrorCount} times)`,
           );
         } else {
-          this.platform.log.debug(
+          this.platform.debugLog(
             `[${this.accessory.displayName}] Telemetry fetch failed (suppressed): ${errorMessage}`,
           );
         }
@@ -274,13 +279,29 @@ export class ElectraPlatformAccessory {
   }
 
   // Logic Helpers (Using lastStatus cache)
-  private getActiveState(): CharacteristicValue {
+  private getTelemetryActiveState(): CharacteristicValue | null {
     const onOffState = this.lastStatus?.diag?.I_ON_OFF_STAT;
     if (onOffState === 'ON') {
       return 1;
     }
     if (onOffState === 'OFF') {
       return 0;
+    }
+
+    return null;
+  }
+
+  private getActiveState(): CharacteristicValue {
+    const telemetryActiveState = this.getTelemetryActiveState();
+    if (telemetryActiveState !== null) {
+      return telemetryActiveState;
+    }
+
+    if (
+      this.lastActiveCommand &&
+      Date.now() < this.lastActiveCommand.expiresAt
+    ) {
+      return this.lastActiveCommand.active ? 1 : 0;
     }
 
     const mode = this.lastStatus?.oper?.AC_MODE;
@@ -436,7 +457,7 @@ export class ElectraPlatformAccessory {
     if (active) {
       const mode = this.resolvePowerOnMode();
 
-      this.platform.log.debug(
+      this.platform.debugLog(
         `[${this.accessory.displayName}] Turning ON AC using requested mode: ${mode}`,
       );
 
@@ -460,6 +481,18 @@ export class ElectraPlatformAccessory {
     }
 
     setTimeout(() => this.pollDeviceStatus(), 2000);
+    this.lastActiveCommand = {
+      active,
+      expiresAt: Date.now() + UNKNOWN_POWER_TELEMETRY_OVERRIDE_MS,
+    };
+    this.service.updateCharacteristic(
+      this.platform.Characteristic.Active,
+      active ? 1 : 0,
+    );
+    this.service.updateCharacteristic(
+      this.platform.Characteristic.CurrentHeaterCoolerState,
+      this.getCurrentState(),
+    );
   }
 
   async setTargetTemperature(value: CharacteristicValue) {
@@ -480,7 +513,7 @@ export class ElectraPlatformAccessory {
     this.requestedTargetMode = mode;
     this.persistTargetMode(mode);
 
-    this.platform.log.debug(
+    this.platform.debugLog(
       `[${this.accessory.displayName}] HomeKit requested target mode: ${mode}`,
     );
 
@@ -537,6 +570,10 @@ export class ElectraPlatformAccessory {
     this.requestedActiveState = null;
     this.logStatusSnapshot(status);
 
+    if (this.getTelemetryActiveState() !== null) {
+      this.lastActiveCommand = null;
+    }
+
     // Push updates to Homebridge immediately
     this.service.updateCharacteristic(
       this.platform.Characteristic.Active,
@@ -582,9 +619,10 @@ export class ElectraPlatformAccessory {
   }
 
   private logStatusSnapshot(status: ElectraStatus) {
-    this.platform.log.debug(
+    this.platform.debugLog(
       `[${this.accessory.displayName}] Telemetry snapshot: ` +
         `AC_MODE=${status.oper?.AC_MODE ?? 'unknown'}, ` +
+        `AC_STSRC=${status.oper?.AC_STSRC ?? 'unknown'}, ` +
         `I_ON_OFF_STAT=${status.diag?.I_ON_OFF_STAT ?? 'unknown'}, ` +
         `MAIN_PWR_STATUS=${status.diag?.MAIN_PWR_STATUS ?? 'unknown'}, ` +
         `O_SYS_PWR=${status.diag?.O_SYS_PWR ?? 'unknown'}, ` +

@@ -46,6 +46,16 @@ export class ElectraSmartPlatform implements DynamicPlatformPlugin {
     });
   }
 
+  public debugLog(message: string, ...parameters: unknown[]) {
+    const options = this.config.options as { debug?: boolean } | undefined;
+    if (options?.debug) {
+      this.log.info(`[Debug] ${message}`, ...parameters);
+      return;
+    }
+
+    this.log.debug(message, ...parameters);
+  }
+
   // 3. Initialize client and discover devices
   private async initializeAndDiscover() {
     try {
@@ -84,7 +94,7 @@ export class ElectraSmartPlatform implements DynamicPlatformPlugin {
       }
 
       this.client = new Client({ imei, token });
-      this.log.debug('Electra Smart Client reinitialized successfully');
+      this.debugLog('Electra Smart Client reinitialized successfully');
       return true;
     } catch (error) {
       this.log.error('Failed to initialize Electra Smart Client:', error);
@@ -104,7 +114,7 @@ export class ElectraSmartPlatform implements DynamicPlatformPlugin {
         if (this.client) {
           // Reinitialize client to get a fresh SID
           await this.initializeElectraSmartClient();
-          this.log.debug('SID refreshed successfully');
+          this.debugLog('SID refreshed successfully');
         }
       } catch (error) {
         this.log.error('Failed to refresh SID:', error);
@@ -170,7 +180,7 @@ export class ElectraSmartPlatform implements DynamicPlatformPlugin {
       this.log.error(
         'An error occurred during device discovery. Check your internet connection and API token.',
       );
-      this.log.debug('Discovery Error Detail:', error);
+      this.debugLog('Discovery Error Detail:', error);
     }
   }
 }
