@@ -2,6 +2,8 @@ import { CharacteristicValue, PlatformAccessory, Service } from 'homebridge';
 import { ElectraSmartPlatform } from './platform.js';
 
 type ElectraHvacMode = 'COOL' | 'HEAT' | 'AUTO';
+type ElectraCustomMode = 'DRY' | 'FAN';
+type ElectraCommandMode = ElectraHvacMode | ElectraCustomMode | 'STBY';
 
 const HOMEKIT_MIN_TARGET_TEMPERATURE = 16;
 const HOMEKIT_MAX_TARGET_TEMPERATURE = 30;
@@ -9,7 +11,7 @@ const DEFAULT_TARGET_TEMPERATURE = 24;
 const HOMEKIT_MIN_CURRENT_TEMPERATURE = -270;
 const HOMEKIT_MAX_CURRENT_TEMPERATURE = 100;
 const DEFAULT_CURRENT_TEMPERATURE = 22;
-const UNKNOWN_POWER_TELEMETRY_OVERRIDE_MS = 5 * 60 * 1000;
+const POST_COMMAND_POLL_DELAYS_MS = [2000, 10000];
 
 interface ElectraStatus {
   oper?: {
@@ -35,9 +37,6 @@ export class ElectraPlatformAccessory {
   private lastStatus: ElectraStatus | null = null;
   private requestedActiveState: boolean | null = null;
   private requestedTargetMode: ElectraHvacMode | null = null;
-  private lastActiveCommand:
-    | { active: boolean; expiresAt: number }
-    | null = null;
   // Track the last telemetry error to avoid spamming logs
   private lastTelemetryErrorMessage?: string;
   private lastTelemetryErrorCount = 0;
@@ -167,12 +166,12 @@ export class ElectraPlatformAccessory {
       .getCharacteristic(
         this.platform.Characteristic.CoolingThresholdTemperature,
       )
+      .updateValue(DEFAULT_TARGET_TEMPERATURE)
       .setProps({
         minStep: 1,
         minValue: HOMEKIT_MIN_TARGET_TEMPERATURE,
         maxValue: HOMEKIT_MAX_TARGET_TEMPERATURE,
       })
-      .updateValue(DEFAULT_TARGET_TEMPERATURE)
       .onSet(this.setTargetTemperature.bind(this))
       .onGet(() => {
         return this.getHomeKitTargetTemperature();
@@ -183,12 +182,12 @@ export class ElectraPlatformAccessory {
       .getCharacteristic(
         this.platform.Characteristic.HeatingThresholdTemperature,
       )
+      .updateValue(DEFAULT_TARGET_TEMPERATURE)
       .setProps({
         minStep: 1,
         minValue: HOMEKIT_MIN_TARGET_TEMPERATURE,
         maxValue: HOMEKIT_MAX_TARGET_TEMPERATURE,
       })
-      .updateValue(DEFAULT_TARGET_TEMPERATURE)
       .onSet(this.setTargetTemperature.bind(this))
       .onGet(() => {
         return this.getHomeKitTargetTemperature();
@@ -279,33 +278,20 @@ export class ElectraPlatformAccessory {
   }
 
   // Logic Helpers (Using lastStatus cache)
-  private getTelemetryActiveState(): CharacteristicValue | null {
-    const onOffState = this.lastStatus?.diag?.I_ON_OFF_STAT;
-    if (onOffState === 'ON') {
-      return 1;
+  private getModeActiveState(): CharacteristicValue | null {
+    const mode = this.lastStatus?.oper?.AC_MODE;
+    if (!mode) {
+      return null;
     }
-    if (onOffState === 'OFF') {
+    if (mode === 'STBY') {
       return 0;
     }
 
-    return null;
+    return 1;
   }
 
   private getActiveState(): CharacteristicValue {
-    const telemetryActiveState = this.getTelemetryActiveState();
-    if (telemetryActiveState !== null) {
-      return telemetryActiveState;
-    }
-
-    if (
-      this.lastActiveCommand &&
-      Date.now() < this.lastActiveCommand.expiresAt
-    ) {
-      return this.lastActiveCommand.active ? 1 : 0;
-    }
-
-    const mode = this.lastStatus?.oper?.AC_MODE;
-    return mode && mode !== 'STBY' ? 1 : 0;
+    return this.getModeActiveState() ?? 0;
   }
 
   private getCurrentState(): CharacteristicValue {
@@ -398,6 +384,41 @@ export class ElectraPlatformAccessory {
     this.platform.api.updatePlatformAccessories([this.accessory]);
   }
 
+  private telemetrySummary() {
+    return (
+      `AC_MODE=${this.lastStatus?.oper?.AC_MODE ?? 'unknown'}, ` +
+      `AC_STSRC=${this.lastStatus?.oper?.AC_STSRC ?? 'unknown'}, ` +
+      `I_ON_OFF_STAT=${this.lastStatus?.diag?.I_ON_OFF_STAT ?? 'unknown'}, ` +
+      `SPT=${this.lastStatus?.oper?.SPT ?? 'unknown'}, ` +
+      `I_RAT=${this.lastStatus?.diag?.I_RAT ?? 'unknown'}`
+    );
+  }
+
+  private schedulePostCommandPolls(commandLabel: string) {
+    for (const delay of POST_COMMAND_POLL_DELAYS_MS) {
+      setTimeout(() => {
+        this.platform.debugLog(
+          `[${this.accessory.displayName}] Polling after ${commandLabel} (${delay}ms)`,
+        );
+        this.pollDeviceStatus();
+      }, delay);
+    }
+  }
+
+  private async setMode(mode: ElectraCommandMode, reason: string) {
+    this.platform.debugLog(
+      `[${this.accessory.displayName}] Sending setMode(${mode}) for ${reason}; last telemetry before command: ${this.telemetrySummary()}`,
+    );
+
+    await this.platform.client?.setMode(this.accessory.context.device.id, mode);
+
+    this.platform.debugLog(
+      `[${this.accessory.displayName}] setMode(${mode}) completed without API error`,
+    );
+
+    this.schedulePostCommandPolls(`setMode(${mode})`);
+  }
+
   private getRotationSpeed(): CharacteristicValue {
     const speed = this.lastStatus?.oper?.FANSPD;
     if (speed === 'HIGH') {
@@ -461,38 +482,18 @@ export class ElectraPlatformAccessory {
         `[${this.accessory.displayName}] Turning ON AC using requested mode: ${mode}`,
       );
 
-      await this.platform.client?.setMode(
-        this.accessory.context.device.id,
-        mode,
-      );
+      await this.setMode(mode, 'HomeKit Active=1');
 
       this.platform.log.info(
         `[${this.accessory.displayName}] AC Active set to: ${mode}`,
       );
     } else {
-      await this.platform.client?.setMode(
-        this.accessory.context.device.id,
-        'STBY',
-      );
+      await this.setMode('STBY', 'HomeKit Active=0');
 
       this.platform.log.info(
         `[${this.accessory.displayName}] AC Active set to: STBY`,
       );
     }
-
-    setTimeout(() => this.pollDeviceStatus(), 2000);
-    this.lastActiveCommand = {
-      active,
-      expiresAt: Date.now() + UNKNOWN_POWER_TELEMETRY_OVERRIDE_MS,
-    };
-    this.service.updateCharacteristic(
-      this.platform.Characteristic.Active,
-      active ? 1 : 0,
-    );
-    this.service.updateCharacteristic(
-      this.platform.Characteristic.CurrentHeaterCoolerState,
-      this.getCurrentState(),
-    );
   }
 
   async setTargetTemperature(value: CharacteristicValue) {
@@ -528,10 +529,7 @@ export class ElectraPlatformAccessory {
     // cache can still report the old mode until the next poll and would otherwise
     // immediately undo the standby command.
     if (activeRequested) {
-      await this.platform.client?.setMode(
-        this.accessory.context.device.id,
-        mode,
-      );
+      await this.setMode(mode, 'HomeKit TargetHeaterCoolerState');
       this.platform.log.info(
         `[${this.accessory.displayName}] Target state set to: ${mode}`,
       );
@@ -551,12 +549,11 @@ export class ElectraPlatformAccessory {
     );
   }
 
-  async setCustomMode(mode: 'DRY' | 'FAN') {
-    await this.platform.client?.setMode(this.accessory.context.device.id, mode);
+  async setCustomMode(mode: ElectraCustomMode) {
+    await this.setMode(mode, 'custom mode switch');
     this.platform.log.info(
       `[${this.accessory.displayName}] Custom mode set to: ${mode}`,
     );
-    setTimeout(() => this.pollDeviceStatus(), 2000);
   }
 
   // POLLING: Update status and Push to HomeKit
@@ -569,10 +566,6 @@ export class ElectraPlatformAccessory {
     this.lastStatus = status;
     this.requestedActiveState = null;
     this.logStatusSnapshot(status);
-
-    if (this.getTelemetryActiveState() !== null) {
-      this.lastActiveCommand = null;
-    }
 
     // Push updates to Homebridge immediately
     this.service.updateCharacteristic(
