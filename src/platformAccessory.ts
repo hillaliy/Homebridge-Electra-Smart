@@ -28,6 +28,7 @@ export class ElectraPlatformAccessory {
   private fanModeService?: Service;
   // Cache to store the last status and avoid "Slow to respond" warnings
   private lastStatus: ElectraStatus | null = null;
+  private requestedActiveState: boolean | null = null;
   private requestedTargetMode: ElectraHvacMode | null = null;
   // Track the last telemetry error to avoid spamming logs
   private lastTelemetryErrorMessage?: string;
@@ -414,7 +415,10 @@ export class ElectraPlatformAccessory {
 
   // SET Handlers
   async setActive(value: CharacteristicValue) {
-    if (value === 1) {
+    const active = value === 1;
+    this.requestedActiveState = active;
+
+    if (active) {
       const mode = this.resolvePowerOnMode();
 
       this.platform.log.debug(
@@ -465,14 +469,17 @@ export class ElectraPlatformAccessory {
       `[${this.accessory.displayName}] HomeKit requested target mode: ${mode}`,
     );
 
-    const isStandby = this.lastStatus?.oper?.AC_MODE === 'STBY';
     const activeRequested =
-      (this.service.getCharacteristic(this.platform.Characteristic.Active)
-        .value as number) === 1;
+      this.requestedActiveState ??
+      ((this.service.getCharacteristic(this.platform.Characteristic.Active)
+        .value as number) === 1);
 
     // When HomeKit sets Active before TargetHeaterCoolerState, setActive may have
     // already powered on with AUTO; apply the correct mode once target is known.
-    if (!isStandby || activeRequested) {
+    // Do not send a mode while HomeKit has just requested Active=0. The telemetry
+    // cache can still report the old mode until the next poll and would otherwise
+    // immediately undo the standby command.
+    if (activeRequested) {
       await this.platform.client?.setMode(
         this.accessory.context.device.id,
         mode,
@@ -512,6 +519,7 @@ export class ElectraPlatformAccessory {
     }
 
     this.lastStatus = status;
+    this.requestedActiveState = null;
 
     // Push updates to Homebridge immediately
     this.service.updateCharacteristic(
