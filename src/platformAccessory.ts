@@ -19,6 +19,9 @@ interface ElectraStatus {
   };
   diag?: {
     I_RAT?: string | number;
+    I_ON_OFF_STAT?: string;
+    MAIN_PWR_STATUS?: string;
+    O_SYS_PWR?: string;
   };
 }
 
@@ -272,11 +275,23 @@ export class ElectraPlatformAccessory {
 
   // Logic Helpers (Using lastStatus cache)
   private getActiveState(): CharacteristicValue {
+    const onOffState = this.lastStatus?.diag?.I_ON_OFF_STAT;
+    if (onOffState === 'ON') {
+      return 1;
+    }
+    if (onOffState === 'OFF') {
+      return 0;
+    }
+
     const mode = this.lastStatus?.oper?.AC_MODE;
     return mode && mode !== 'STBY' ? 1 : 0;
   }
 
   private getCurrentState(): CharacteristicValue {
+    if (this.getActiveState() === 0) {
+      return this.platform.Characteristic.CurrentHeaterCoolerState.IDLE;
+    }
+
     const mode = this.lastStatus?.oper?.AC_MODE;
     if (mode === 'COOL') {
       return this.platform.Characteristic.CurrentHeaterCoolerState.COOLING;
@@ -520,6 +535,7 @@ export class ElectraPlatformAccessory {
 
     this.lastStatus = status;
     this.requestedActiveState = null;
+    this.logStatusSnapshot(status);
 
     // Push updates to Homebridge immediately
     this.service.updateCharacteristic(
@@ -562,6 +578,18 @@ export class ElectraPlatformAccessory {
     this.fanModeService?.updateCharacteristic(
       this.platform.Characteristic.On,
       status.oper?.AC_MODE === 'FAN',
+    );
+  }
+
+  private logStatusSnapshot(status: ElectraStatus) {
+    this.platform.log.debug(
+      `[${this.accessory.displayName}] Telemetry snapshot: ` +
+        `AC_MODE=${status.oper?.AC_MODE ?? 'unknown'}, ` +
+        `I_ON_OFF_STAT=${status.diag?.I_ON_OFF_STAT ?? 'unknown'}, ` +
+        `MAIN_PWR_STATUS=${status.diag?.MAIN_PWR_STATUS ?? 'unknown'}, ` +
+        `O_SYS_PWR=${status.diag?.O_SYS_PWR ?? 'unknown'}, ` +
+        `SPT=${status.oper?.SPT ?? 'unknown'}, ` +
+        `I_RAT=${status.diag?.I_RAT ?? 'unknown'}`,
     );
   }
 }
