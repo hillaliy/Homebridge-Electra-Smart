@@ -52,6 +52,11 @@
     "@homebridge/plugin-ui-utils": "^2.2.6",
     "@yosnightfly/electra-smart-js-client": "^1.0.7"
   },
+  "overrides": {
+    "nodemon": {
+      "chokidar": "^4.0.3"
+    }
+  },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^26.3.0",
