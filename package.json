@@ -53,6 +53,7 @@
     "@yosnightfly/electra-smart-js-client": "^1.0.7"
   },
   "overrides": {
+    "minimatch@^10.0.0": "^11.0.5",
     "nodemon": {
       "chokidar": "^4.0.3"
     }
