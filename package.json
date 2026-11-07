@@ -55,7 +55,8 @@
   "overrides": {
     "minimatch@^10.0.0": "^11.0.5",
     "nodemon": {
-      "chokidar": "^4.0.3"
+      "chokidar": "^4.0.3",
+      "minimatch": "^11.0.5"
     }
   },
   "devDependencies": {
